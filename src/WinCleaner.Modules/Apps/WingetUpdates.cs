@@ -34,7 +34,14 @@ public static class WingetUpdates
     {
         var winget = WingetPath() ?? throw new FileNotFoundException("winget non è installato (App Installer da Microsoft Store)");
         var (exit, output) = await RunAsync(winget, ["upgrade", "--include-unknown", "--disable-interactivity", "--accept-source-agreements"], cancellation);
-        return Parse(output);
+        var updates = Parse(output);
+        Core.OperationLog.Standard.Write($"updates\tcheck exit={exit}\t{updates.Count}");
+        if (updates.Count == 0 && exit != 0)
+        {
+            var last = output.Split('\n').Select(StripProgress).Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
+            throw new InvalidOperationException($"winget ha restituito il codice {exit}{(last is null ? "" : ": " + last)}");
+        }
+        return updates;
     }
 
     /// <summary>Installs one update silently. Returns null on success, or the error text.</summary>
@@ -44,15 +51,16 @@ public static class WingetUpdates
         var (exit, output) = await RunAsync(winget,
             ["upgrade", "--id", id, "--exact", "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"],
             cancellation);
+        var lastLine = output.Split('\n').Select(StripProgress).Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
+        Core.OperationLog.Standard.Write($"updates\tupgrade exit={exit}\t{id}\t{lastLine}");
         if (exit == 0) return null;
-        var last = output.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
-        return last ?? $"winget ha restituito il codice {exit}";
+        return lastLine ?? $"winget ha restituito il codice {exit}";
     }
 
     /// <summary>Parses every table of winget's output (header line followed by a line of dashes).</summary>
     public static List<AvailableUpdate> Parse(string output)
     {
-        var lines = output.Replace("\r", "").Split('\n').Select(StripProgress).ToList();
+        var lines = output.Split('\n').Select(StripProgress).ToList();
         var result = new List<AvailableUpdate>();
         for (int i = 1; i < lines.Count; i++)
         {
@@ -88,11 +96,18 @@ public static class WingetUpdates
         return row[start..end].Trim().TrimEnd('…');
     }
 
-    /// <summary>Drops the spinner and progress bar that winget prints before the table.</summary>
-    private static string StripProgress(string line)
+    /// <summary>
+    /// What a console would show for one line: winget redraws its spinner and
+    /// progress bar with carriage returns and backspaces, so only the text
+    /// after the last one is kept (a trailing \r from \r\n is ignored).
+    /// </summary>
+    internal static string StripProgress(string line)
     {
-        int cut = line.LastIndexOf('\b');
-        return cut >= 0 ? line[(cut + 1)..] : line;
+        line = line.TrimEnd('\r');
+        int cut = Math.Max(line.LastIndexOf('\r'), line.LastIndexOf('\b'));
+        if (cut >= 0) line = line[(cut + 1)..];
+        // Escape sequences (colours, cursor moves) some versions print even when redirected.
+        return System.Text.RegularExpressions.Regex.Replace(line, @"\x1B\[[0-9;?]*[A-Za-z]", "");
     }
 
     private static async Task<(int Exit, string Output)> RunAsync(string file, string[] args, CancellationToken cancellation)

@@ -157,3 +157,22 @@ public class SharedFolderTests
     public void SharedFoldersAreNeverAProgramFolder(string folder, bool shared) =>
         Assert.Equal(shared, WinCleaner.Modules.Apps.InstalledPrograms.IsSharedFolder(folder));
 }
+
+public class WingetConsoleOutputTests
+{
+    [Fact]
+    public void SpinnerAndProgressRedrawsDoNotShiftTheColumns()
+    {
+        string output =
+            "\r   - \r   \\ \r   | \r   / \r                                                                \r" +
+            "Nome                        Id                        Versione       Disponibile    Origine\r\n" +
+            "-------------------------------------------------------------------------------------------\r\n" +
+            "\u001b[0mGit                         Git.Git                   2.54.0         2.56.0.3       winget\r\n" +
+            "VLC media player            VideoLAN.VLC              3.0.23         3.0.24         winget\r\n" +
+            "2 aggiornamenti disponibili.\r\n";
+        var updates = WingetUpdates.Parse(output);
+        Assert.Equal(2, updates.Count);
+        Assert.Equal(new AvailableUpdate("Git", "Git.Git", "2.54.0", "2.56.0.3", "winget"), updates[0]);
+        Assert.Equal("VideoLAN.VLC", updates[1].Id);
+    }
+}
