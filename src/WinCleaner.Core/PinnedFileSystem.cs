@@ -26,7 +26,7 @@ public sealed class FileSystemException : IOException
 
 /// <summary>One entry of a folder, read from a folder handle.</summary>
 public readonly record struct DirectoryEntry(
-    string Name, uint Attributes, long Length, long AllocationSize, long LastWriteTimeUtc)
+    string Name, uint Attributes, long Length, long AllocationSize, long LastWriteTimeUtc, UInt128 FileId = default)
 {
     public bool IsDirectory => (Attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     public bool IsReparsePoint => (Attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
@@ -248,23 +248,34 @@ public static unsafe partial class PinnedFileSystem
     }
 
     /// <summary>Lists a folder opened with list access. "." and ".." are skipped.</summary>
-    public static List<DirectoryEntry> Enumerate(SafeFileHandle directory)
+    public static List<DirectoryEntry> Enumerate(SafeFileHandle directory) => Enumerate(directory, withIds: false);
+
+    /// <summary>
+    /// Lists a folder, optionally with the 128-bit file id of each entry
+    /// (NTFS and ReFS), which identifies hard links of the same file without
+    /// opening it. Falls back to entries without ids on other file systems.
+    /// </summary>
+    public static List<DirectoryEntry> Enumerate(SafeFileHandle directory, bool withIds)
     {
         var entries = new List<DirectoryEntry>();
         const int size = 64 * 1024;
         byte* buffer = (byte*)NativeMemory.Alloc(size);
         try
         {
-            int infoClass = FileFullDirectoryRestartInfo;
+            int restartClass = withIds ? FileIdExtdDirectoryRestartInfo : FileFullDirectoryRestartInfo;
+            int nextClass = withIds ? FileIdExtdDirectoryInfo : FileFullDirectoryInfo;
+            int infoClass = restartClass;
             while (true)
             {
                 if (!GetFileInformationByHandleEx(directory, infoClass, buffer, size))
                 {
                     int error = Marshal.GetLastPInvokeError();
                     if (error == ERROR_NO_MORE_FILES) break;
+                    if (withIds && infoClass == restartClass && error is ERROR_INVALID_PARAMETER or ERROR_NOT_SUPPORTED)
+                        return Enumerate(directory, withIds: false);
                     throw new FileSystemException(error, null);
                 }
-                infoClass = FileFullDirectoryInfo;
+                infoClass = nextClass;
                 int offset = 0;
                 while (true)
                 {
@@ -275,9 +286,19 @@ public static unsafe partial class PinnedFileSystem
                     long allocation = BinaryPrimitives.ReadInt64LittleEndian(span[48..]);
                     uint attributes = BinaryPrimitives.ReadUInt32LittleEndian(span[56..]);
                     int nameBytes = (int)BinaryPrimitives.ReadUInt32LittleEndian(span[60..]);
-                    string name = new((char*)(buffer + offset + 68), 0, nameBytes / 2);
+                    UInt128 id = default;
+                    int nameOffset = 68;
+                    if (withIds)
+                    {
+                        // FILE_ID_EXTD_DIR_INFO: ..., EaSize, ReparsePointTag, FileId (16 bytes), FileName.
+                        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(span[72..]);
+                        ulong high = BinaryPrimitives.ReadUInt64LittleEndian(span[80..]);
+                        id = new UInt128(high, low);
+                        nameOffset = 88;
+                    }
+                    string name = new((char*)(buffer + offset + nameOffset), 0, nameBytes / 2);
                     if (name is not ("." or ".."))
-                        entries.Add(new DirectoryEntry(name, attributes, length, allocation, lastWrite));
+                        entries.Add(new DirectoryEntry(name, attributes, length, allocation, lastWrite, id));
                     if (next == 0) break;
                     offset += (int)next;
                 }

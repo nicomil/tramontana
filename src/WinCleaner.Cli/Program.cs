@@ -8,6 +8,26 @@ using WinCleaner.Modules;
 //                                           removes the preselected user-level items (dry run by default)
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+if (args.Length >= 1 && args[0] == "lens")
+{
+    string root = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : KnownPaths.SystemDrive;
+    var counter = new ScanCounter();
+    var watch = Stopwatch.StartNew();
+    int depthArg = Array.IndexOf(args, "--depth"); var tree = new SpaceLensScanner { ParallelDepth = depthArg > 0 ? int.Parse(args[depthArg + 1]) : 20 }.Scan(root, counter);
+    var (total, free) = SpaceLensScanner.DriveSpace(root);
+    Console.WriteLine($"{tree.Path}: {Format.Bytes(tree.Size)} in {counter.Snapshot.Files} file ({watch.ElapsedMilliseconds} ms). Disco: {Format.Bytes(total - free)} usati di {Format.Bytes(total)}");
+    void Print(DiskNode node, int depth)
+    {
+        foreach (var child in node.Children.Take(depth == 0 ? 12 : 4))
+        {
+            Console.WriteLine($"{new string(' ', depth * 2 + 2)}{child.Name,-40} {Format.Bytes(child.Size),10}{(child.IsUnreadable ? " (illeggibile)" : "")}");
+            if (depth < 1 && child.IsDirectory) Print(child, depth + 1);
+        }
+    }
+    Print(tree, 0);
+    return 0;
+}
+
 if (args.Length < 2 || args[0] is not ("scan" or "clean"))
 {
     Console.WriteLine("uso: wccli scan|clean <modulo> [--mode dry|recycle|delete]");

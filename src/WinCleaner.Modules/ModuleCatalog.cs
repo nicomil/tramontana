@@ -9,6 +9,9 @@ public static class ModuleCatalog
     [
         new SystemJunkModule(),
         new RecycleBinModule(),
+        new LargeOldFilesModule(),
+        new DuplicatesModule(),
+        new SimilarImagesModule(),
     ];
 
     public static ICleanerModule? Find(string id) =>

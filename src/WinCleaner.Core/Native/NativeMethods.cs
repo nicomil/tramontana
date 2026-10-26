@@ -75,6 +75,8 @@ internal static unsafe partial class NativeMethods
     public const int FileFullDirectoryInfo = 14;
     public const int FileFullDirectoryRestartInfo = 15;
     public const int FileIdInfo = 18;
+    public const int FileIdExtdDirectoryInfo = 19;
+    public const int FileIdExtdDirectoryRestartInfo = 20;
 
     public const int ERROR_FILE_NOT_FOUND = 2;
     public const int ERROR_PATH_NOT_FOUND = 3;
