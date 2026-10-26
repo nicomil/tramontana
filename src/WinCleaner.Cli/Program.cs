@@ -67,7 +67,49 @@ if (args.Length >= 1 && args[0] == "protection")
     var watch = Stopwatch.StartNew();
     var findings = ProtectionScanner.Scan();
     Console.WriteLine($"{findings.Count} risultati ({watch.ElapsedMilliseconds} ms)");
-    foreach (var f in findings) Console.WriteLine($"  {f.Severity,-8} [{f.Category}] {f.Title}: {f.Reason}");
+    foreach (var f in findings.Where(f => f.Severity > WinCleaner.Modules.Protection.Severity.Ok || args.Contains("--all")))
+    {
+        Console.WriteLine($"  {f.Severity,-8} [{f.Category}] {(f.IsNew ? "NUOVO " : "")}{f.Title}: {f.Reason}");
+        if (args.Contains("--evidence")) foreach (var line in f.Evidence) Console.WriteLine($"             {line}");
+    }
+    if (args.Contains("--report")) Console.WriteLine(ProtectionReport.Markdown(findings));
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "processes")
+{
+    var sampler = new WinCleaner.Modules.Protection.Processes.ProcessSampler();
+    sampler.Sample();
+    await Task.Delay(2000);
+    var watch = Stopwatch.StartNew();
+    var activities = sampler.Sample().OrderByDescending(a => a.Cpu).ToList();
+    Console.WriteLine($"{activities.Count} processi ({watch.ElapsedMilliseconds} ms)");
+    foreach (var a in activities.Take(15))
+        Console.WriteLine($"  {a.Process.Pid,6} {a.Cpu,5:P0} {Format.Bytes(a.Memory),10} disco {Format.Bytes((long)a.DiskBytesPerSecond),9}/s {(a.Process.IsMine ? "mio " : "    ")}{a.Process.Path ?? a.Process.Name}");
+    watch.Restart();
+    foreach (var f in new WinCleaner.Modules.Protection.Checks.ProcessesCheck(intervals: 2).Run(new WinCleaner.Modules.Protection.CheckContext { Startup = [] }))
+    {
+        Console.WriteLine($"  {f.Severity,-8} {f.Title}: {f.Reason}");
+        if (args.Contains("--evidence")) foreach (var line in f.Evidence) Console.WriteLine($"             {line}");
+    }
+    Console.WriteLine($"({watch.ElapsedMilliseconds} ms)");
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "signatures")
+{
+    var store = new WinCleaner.Modules.Protection.Rules.RuleStore();
+    var files = store.Files();
+    Console.WriteLine($"Regole: {string.Join(", ", files.Select(f => f.Name + " (" + f.Kind + ")"))} · yara64.exe: {(store.YaraExecutable() is null ? "assente" : "presente")}");
+    var watch = Stopwatch.StartNew();
+    var ctx = new WinCleaner.Modules.Protection.CheckContext();
+    var candidates = WinCleaner.Modules.Protection.Checks.ScanTargets.Candidates(ctx);
+    Console.WriteLine($"{candidates.Count} file candidati ({watch.ElapsedMilliseconds} ms)");
+    watch.Restart();
+    foreach (var f in new WinCleaner.Modules.Protection.Checks.SignatureScanCheck().Run(ctx))
+    {
+        Console.WriteLine($"  {f.Severity,-8} {f.Title}: {f.Reason}");
+        foreach (var line in f.Evidence) Console.WriteLine($"             {line}");
+    }
+    Console.WriteLine($"({watch.ElapsedMilliseconds} ms)");
     return 0;
 }
 if (args.Length >= 1 && args[0] == "monitor")

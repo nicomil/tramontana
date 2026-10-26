@@ -68,6 +68,15 @@ public static class HelperService
                 HelperOperation.SetServiceStart => await SetServiceStart(request, cancellation),
                 HelperOperation.DeleteWiFi => await DeleteWiFi(request, cancellation),
                 HelperOperation.ReadPrefetch => new HelperResponse { Ok = true, Times = UserAssist.LastRunByExeName() },
+                HelperOperation.CollectSystemEvidence => new HelperResponse { Ok = true, Text = await Protection.EvidenceCollection.CollectAsync(cancellation) },
+                HelperOperation.Quarantine => QuarantineSystem(request),
+                HelperOperation.RestoreQuarantined => RestoreQuarantined(request),
+                HelperOperation.DeleteQuarantined => DeleteQuarantined(request),
+                HelperOperation.TerminateProcess => TerminateProcess(request),
+                HelperOperation.RemoveProtectionValue => RemoveProtectionValue(request),
+                HelperOperation.RemoveDefenderExclusion => await RemoveDefenderExclusion(request, cancellation),
+                HelperOperation.RemoveWmiSubscription => await RemoveWmiSubscription(request, cancellation),
+                HelperOperation.EnableDefenderRealtime => await EnableDefenderRealtime(cancellation),
                 _ => new HelperResponse { Ok = false, Error = "Operazione sconosciuta" },
             };
             return response with { Id = request.Id };
@@ -176,6 +185,121 @@ public static class HelperService
         if (request.Name is null || !known) return new HelperResponse { Ok = false, Error = "Rete non trovata" };
         var (exit, output) = await Maintenance.Exec("netsh.exe", ["wlan", "delete", "profile", $"name={request.Name}"], cancellation);
         OperationLog.Standard.Write($"wifi\tdelete\t{request.Name}\t{exit}");
+        return exit == 0 ? new HelperResponse { Ok = true } : new HelperResponse { Ok = false, Error = output.Trim() };
+    }
+
+    // ---- Protection (M7) ----
+
+    /// <summary>System files the quarantine may take: the system roots plus the program folders, never the blocked children.</summary>
+    private static IReadOnlyList<string> QuarantineRoots() =>
+        [.. SystemRoots(), KnownPaths.ProgramFiles, KnownPaths.ProgramFilesX86, KnownPaths.ProgramData, Path.Combine(KnownPaths.SystemDrive, "Users", "Public"),
+         Path.Combine(KnownPaths.Windows, "Tasks"), Path.Combine(KnownPaths.Windows, "System32", "Tasks")];
+
+    private static Protection.Quarantine SystemQuarantine()
+    {
+        Directory.CreateDirectory(Protection.Quarantine.SystemFolder);
+        return new Protection.Quarantine(Protection.Quarantine.SystemFolder, OperationLog.Standard);
+    }
+
+    private static HelperResponse QuarantineSystem(HelperRequest request)
+    {
+        var outcomes = new List<RemovalOutcome>();
+        var quarantine = SystemQuarantine();
+        foreach (var path in request.Paths)
+        {
+            if (IsBlocked(path) || PathGuard.IsStrictlyInside(path, Path.Combine(KnownPaths.Windows, "System32")) && !path.Contains(@"\Tasks\", StringComparison.OrdinalIgnoreCase))
+            { outcomes.Add(new RemovalOutcome(path, 0, RemovalError.SystemProtected, "Cartella di Windows o condivisa")); continue; }
+            try
+            {
+                var record = quarantine.Put(path, request.Name ?? Path.GetFileName(path), request.Key ?? "", QuarantineRoots(), isSystem: true);
+                outcomes.Add(new RemovalOutcome(path, 0, null, record.Id.ToString("N") + "|" + record.StoredFolder + "|" + record.StoredName));
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+            { outcomes.Add(new RemovalOutcome(path, 0, RemovalError.Failed, e.Message)); }
+        }
+        return new HelperResponse { Ok = true, Outcomes = [.. outcomes] };
+    }
+
+    private static HelperResponse RestoreQuarantined(HelperRequest request)
+    {
+        var quarantine = SystemQuarantine();
+        if (!Guid.TryParse(request.Name, out var id)) return new HelperResponse { Ok = false, Error = "Id non valido" };
+        var record = quarantine.Records().FirstOrDefault(r => r.Id == id);
+        if (record is null) return new HelperResponse { Ok = false, Error = "Elemento non trovato nella quarantena di sistema" };
+        quarantine.Restore(record);
+        return new HelperResponse { Ok = true };
+    }
+
+    private static HelperResponse DeleteQuarantined(HelperRequest request)
+    {
+        var quarantine = SystemQuarantine();
+        if (!Guid.TryParse(request.Name, out var id)) return new HelperResponse { Ok = false, Error = "Id non valido" };
+        var record = quarantine.Records().FirstOrDefault(r => r.Id == id);
+        if (record is null) return new HelperResponse { Ok = false, Error = "Elemento non trovato nella quarantena di sistema" };
+        quarantine.Delete(record);
+        return new HelperResponse { Ok = true };
+    }
+
+    /// <summary>Critical processes are never killed, and the process must still run the image the app saw.</summary>
+    private static readonly string[] NeverKill = ["csrss.exe", "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe", "smss.exe", "svchost.exe", "dwm.exe", "explorer.exe", "MsMpEng.exe", "wchelper.exe", "WinCleaner.exe"];
+
+    private static HelperResponse TerminateProcess(HelperRequest request)
+    {
+        int pid = request.Number;
+        string? expected = request.Key;
+        if (pid <= 4 || expected is null) return new HelperResponse { Ok = false, Error = "Processo non valido" };
+        string? actual = Protection.Processes.SystemProcesses.QueryPath(pid);
+        if (actual is null || !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            return new HelperResponse { Ok = false, Error = "Il processo non è più quello indicato" };
+        if (NeverKill.Contains(Path.GetFileName(actual), StringComparer.OrdinalIgnoreCase) && PathGuard.IsStrictlyInside(actual, KnownPaths.Windows))
+            return new HelperResponse { Ok = false, Error = "Processo di sistema: non viene terminato" };
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            process.Kill(entireProcessTree: true);
+            OperationLog.Standard.Write($"helper\tkill\t{pid}\t{actual}");
+            return new HelperResponse { Ok = true };
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or ArgumentException)
+        { return new HelperResponse { Ok = false, Error = e.Message }; }
+    }
+
+    private static HelperResponse RemoveProtectionValue(HelperRequest request)
+    {
+        if (request.Key is null || request.Name is null) return new HelperResponse { Ok = false, Error = "Voce non valida" };
+        try { return new HelperResponse { Ok = true, Text = Protection.ProtectionRegistry.Apply(request.Key, request.Name, OperationLog.Standard) }; }
+        catch (Exception e) when (e is InvalidOperationException or UnauthorizedAccessException or IOException) { return new HelperResponse { Ok = false, Error = e.Message }; }
+    }
+
+    private static async Task<HelperResponse> RemoveDefenderExclusion(HelperRequest request, CancellationToken cancellation)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Contains('\'') || request.Name.Contains('"') || request.Name.Contains('`') || request.Name.Contains('$'))
+            return new HelperResponse { Ok = false, Error = "Esclusione non valida" };
+        string kind = request.Key switch { "Processo" => "ExclusionProcess", "Estensione" => "ExclusionExtension", _ => "ExclusionPath" };
+        var (exit, output) = await Maintenance.Exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", $"Remove-MpPreference -{kind} '{request.Name}'"], cancellation);
+        OperationLog.Standard.Write($"helper\tdefender-exclusion\t{kind}\t{request.Name}\t{exit}");
+        return exit == 0 ? new HelperResponse { Ok = true } : new HelperResponse { Ok = false, Error = output.Trim() };
+    }
+
+    private static async Task<HelperResponse> RemoveWmiSubscription(HelperRequest request, CancellationToken cancellation)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Contains('\'') || request.Name.Contains('"') || request.Name.Contains('`') || request.Name.Contains('$'))
+            return new HelperResponse { Ok = false, Error = "Nome non valido" };
+        string name = request.Name;
+        string script = "$n = '" + name + "'; "
+            + "Get-WmiObject -Namespace root\\subscription -Class __FilterToConsumerBinding | Where-Object { $_.Consumer -like ('*Name=\"' + $n + '\"*') -or $_.Filter -like ('*Name=\"' + $n + '\"*') } | Remove-WmiObject; "
+            + "Get-WmiObject -Namespace root\\subscription -Class CommandLineEventConsumer | Where-Object { $_.Name -eq $n } | Remove-WmiObject; "
+            + "Get-WmiObject -Namespace root\\subscription -Class ActiveScriptEventConsumer | Where-Object { $_.Name -eq $n } | Remove-WmiObject; "
+            + "Get-WmiObject -Namespace root\\subscription -Class __EventFilter | Where-Object { $_.Name -eq $n } | Remove-WmiObject";
+        var (exit, output) = await Maintenance.Exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], cancellation);
+        OperationLog.Standard.Write($"helper\twmi-remove\t{name}\t{exit}");
+        return exit == 0 ? new HelperResponse { Ok = true } : new HelperResponse { Ok = false, Error = output.Trim() };
+    }
+
+    private static async Task<HelperResponse> EnableDefenderRealtime(CancellationToken cancellation)
+    {
+        var (exit, output) = await Maintenance.Exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "Set-MpPreference -DisableRealtimeMonitoring $false"], cancellation);
+        OperationLog.Standard.Write($"helper\tdefender-realtime\ton\t{exit}");
         return exit == 0 ? new HelperResponse { Ok = true } : new HelperResponse { Ok = false, Error = output.Trim() };
     }
 

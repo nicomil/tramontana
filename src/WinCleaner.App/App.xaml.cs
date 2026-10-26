@@ -56,5 +56,6 @@ public partial class App : Application
             return;
         }
         if (!commandLine.Contains("--background")) Window.Activate();
+        if (commandLine.Contains("--smoke")) _ = Window.SmokeAsync();
     }
 }

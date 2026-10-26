@@ -24,6 +24,24 @@ public enum HelperOperation
     DeleteWiFi,
     /// <summary>Last run times from the Prefetch folder (for "last used").</summary>
     ReadPrefetch,
+    /// <summary>Read-only: the root-only facts the Protection checks need (see EvidenceCollection).</summary>
+    CollectSystemEvidence,
+    /// <summary>Move system files into the system quarantine (Paths, Name = quarantine id).</summary>
+    Quarantine,
+    /// <summary>Put a system quarantine item back (Name = id, Key = original path).</summary>
+    RestoreQuarantined,
+    /// <summary>Delete a system quarantine folder (Name = id).</summary>
+    DeleteQuarantined,
+    /// <summary>Kill a process (Number = pid, Key = expected image path).</summary>
+    TerminateProcess,
+    /// <summary>Delete or restore one registry value of the Protection allow list (Key, Name).</summary>
+    RemoveProtectionValue,
+    /// <summary>Remove a Defender exclusion (Name = path, process or extension exactly as listed).</summary>
+    RemoveDefenderExclusion,
+    /// <summary>Remove a WMI event subscription by consumer name (Name).</summary>
+    RemoveWmiSubscription,
+    /// <summary>Turn Defender's real-time protection back on.</summary>
+    EnableDefenderRealtime,
 }
 
 public sealed record HelperRequest

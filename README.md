@@ -40,7 +40,7 @@ Prova delle scansioni (sola lettura, salvo `clean`, che di default è una prova)
 ```powershell
 wccli scan system-junk|recycle-bin|registry|large-old-files|duplicates|similar-images|installers|orphans [--items]
 wccli clean system-junk --mode dry|recycle|delete
-wccli lens C:\ | apps | leftovers <nome> | updates | privacy | startup | protection | monitor
+wccli lens C:\ | apps | leftovers <nome> | updates | privacy | startup | protection [--evidence --all --report] | processes | signatures | monitor
 ```
 
 ## Funzioni
@@ -54,7 +54,9 @@ wccli lens C:\ | apps | leftovers <nome> | updates | privacy | startup | protect
 | File | File grandi e vecchi, download non usati, duplicati, immagini simili, installer già usati. |
 | Programmi | Disinstallazione con ricerca degli avanzi, app dello Store, aggiornamenti con winget, avanzi di programmi già rimossi. |
 | Privacy | Cronologia, cookie, download, moduli, password (solo conteggio), sessioni dei browser; file recenti, Jump List, ricerche di Explorer, Appunti, reti Wi‑Fi; app che hanno usato fotocamera, microfono e posizione. |
-| Protezione | Antivirus, protezione in tempo reale e anti-manomissione, firewall, UAC, SmartScreen, Avvio protetto, Desktop remoto, avvio sospetto, estensioni dei browser, file hosts, proxy, dispositivi con problemi; analisi rapida con Defender. |
+| Protezione | Defender (criteri, esclusioni, minacce recenti, ASR), difese e impostazioni (firewall, UAC, SmartScreen, LSASS, WDigest, BitLocker, aggiornamenti, estensioni nascoste, AutoPlay, SMBv1, accesso remoto, account, login automatico, PowerShell, macro di Office), persistenza (Run, attività anche nascoste, servizi e driver, Winlogon, IFEO, AppInit, WMI, BITS, COM, Active Setup, LSA, shell, provider, profili PowerShell, Office), programmi recenti, browser (estensioni, criteri forzati, dirottamenti, Firefox), certificati radice, rete (hosts, proxy, DNS, regole firewall), processi (CPU sostenuta, nomi di sistema fuori posto, LOLBin, iniezioni, connessioni), firme (LOLDrivers, hash MalwareBazaar, YARA). Ogni avviso ha evidenze e "nuovo dall'ultimo controllo"; controllo approfondito con l'helper in sola lettura; quarantena, correzioni del registro con backup, analisi mirata di Defender, rapporto Markdown. |
+| Attività | Processi in tempo reale con CPU, memoria, disco, connessioni, firma e giudizio di Protezione; avviso nell'area di notifica quando un processo non Microsoft satura un core per oltre un minuto. |
+| Quarantena | File messi da parte da Protezione: senza permessi di esecuzione, nascosti, con Zone.Identifier; ripristino ed eliminazione (di sistema tramite l'helper). |
 | Prestazioni | Avvio automatico (come Gestione attività), attività pianificate, servizi; manutenzione: DNS, memoria, icone, Esplora risorse, Pulizia di Windows (Windows.old), DISM, SFC, Ottimizzazione recapito, ottimizzazione unità, punto di ripristino, cancellazione dello spazio libero. |
 | Altro | Icona nell'area di notifica con CPU, memoria, disco e batteria; analisi pianificata con notifica; avvio con Windows. |
 
@@ -75,6 +77,7 @@ Fuori dal perimetro, di proposito: aggiornamento dei driver (serve un database p
 - **Installer**: preselezionati solo se Windows li ha segnati come scaricati da internet (Mark of the Web) e lo stesso programma è installato in versione uguale o più recente.
 - **Avvio automatico**: disattivare usa le chiavi `StartupApproved`, come Gestione attività, ed è sempre reversibile. Le attività sotto `\Microsoft\` e i servizi di Microsoft non vengono mostrati né toccati.
 - **Helper di sistema** (`wchelper.exe`): è l'unica parte che gira come amministratore, con una sola richiesta UAC per sessione. Comunica su una named pipe accessibile solo all'utente, con un'unica connessione; l'app verifica che il processo collegato esegua un file con lo SHA-256 atteso, l'helper verifica che la pipe appartenga al processo che l'ha avviato. Accetta un elenco chiuso di operazioni e ricontrolla tutto da sé: cartelle di sistema consentite, elenco di cartelle condivise mai toccate (WindowsApps, Common Files, `ProgramData\Microsoft`…), TrustedInstaller, WRP, elenco del registro; attività, servizi, voci di avvio e reti Wi‑Fi devono essere tra quelli che l'helper stesso trova sul sistema. Se l'app non è in Program Files, una Windows PowerShell elevata copia l'helper in una cartella nuova sotto `C:\Windows\Temp` accessibile solo ad amministratori e SYSTEM, ne verifica lo SHA-256 e solo allora esegue quella copia.
+- **Protezione (M7, `docs/spec/protection-upgrade.md`)**: la scansione standard non chiede mai l'amministratore. Il controllo approfondito usa una sola operazione dell'helper di sola lettura (`CollectSystemEvidence`) con comandi fissi. Le modifiche al registro passano da un elenco esatto di voci (`ProtectionRegistry`), con file `.reg` prima di ogni cambio; i valori che Windows richiede (Shell, Userinit, AppInit_DLLs) vengono riportati al valore predefinito, non cancellati. La quarantena sposta i file tramite handle (`SafeRemover.MoveInto`), toglie i permessi di esecuzione, aggiunge `Zone.Identifier`; quella di sistema sta in `ProgramData\WinCleaner\Quarantine` tramite l'helper. L'helper termina un processo solo se esegue ancora l'immagine indicata e mai i processi critici di Windows. Regole YARA, hash e LOLDrivers non vengono scaricati: l'utente li aggiunge dalle Impostazioni e confronta lo SHA-256 mostrato; `yara64.exe` ufficiale va messo nella stessa cartella.
 - Ogni operazione finisce nel registro `%LOCALAPPDATA%\WinCleaner\Logs\operations.log`.
 
 ## Stato
@@ -87,5 +90,6 @@ Fuori dal perimetro, di proposito: aggiornamento dei driver (serve un database p
 | M4: privacy, avvio automatico, manutenzione, protezione, registro, helper | fatto |
 | M5: app WinUI 3, area di notifica, pianificazione, impostazioni | fatto (da provare a schermo) |
 | M6: installazione in Program Files | fatto (script PowerShell) |
+| M7: Protezione avanzata (Defender, persistenza, processi, quarantena, firme) | fatto |
 
-93 test automatici coprono le parti di sicurezza (junction nel percorso e dentro le cartelle, file in uso, sola lettura, Cestino visibile in Explorer, backup del registro e dei database, regole dentro le radici, limiti dell'helper).
+133 test automatici coprono le parti di sicurezza (junction nel percorso e dentro le cartelle, file in uso, sola lettura, Cestino visibile in Explorer, backup del registro e dei database, regole dentro le radici, limiti dell'helper).

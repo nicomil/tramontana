@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window
     private TrayIcon? _tray;
     private readonly SystemMonitor _monitor = new();
     private DispatcherTimer? _trayTimer;
+    private readonly WinCleaner.Modules.Protection.Checks.BusyProcessWatcher _busyWatcher = new();
+    private int _lastBusyPid;
     private bool _quitting;
 
     public MainWindow()
@@ -137,6 +139,27 @@ public sealed partial class MainWindow : Window
         if (state2.Startup is { } startup) _badges["startup"].Text = startup.Count(s => s.Enabled).ToString();
     }
 
+    /// <summary>Opens every page in turn, logs the outcome and quits: the end-to-end check run on the build machine.</summary>
+    public async Task SmokeAsync()
+    {
+        var failures = new List<string>();
+        var tags = Menu.SelectMany(m => m.Entries).Select(e => e.Tag).ToList();
+        foreach (var tag in tags)
+        {
+            try
+            {
+                Navigate(tag);
+                await Task.Delay(TimeSpan.FromSeconds(tag is "protection" or "health" ? 25 : 4));
+                if (ContentFrame.Content is null) failures.Add(tag + ": nessuna pagina");
+            }
+            catch (Exception e) { failures.Add($"{tag}: {e.Message}"); }
+        }
+        try { Nav.SelectedItem = Nav.SettingsItem; await Task.Delay(2000); }
+        catch (Exception e) { failures.Add("settings: " + e.Message); }
+        WinCleaner.Core.OperationLog.Standard.Write(failures.Count == 0 ? $"smoke\tok\t{tags.Count + 1} pagine" : "smoke\tFAIL\t" + string.Join(" | ", failures));
+        Application.Current.Exit();
+    }
+
     public void Navigate(string tag)
     {
         if (_items.TryGetValue(tag, out var item)) Nav.SelectedItem = item;
@@ -194,11 +217,19 @@ public sealed partial class MainWindow : Window
             ]);
             _monitor.Next();
             _trayTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-            _trayTimer.Tick += (_, _) =>
+            _trayTimer.Tick += async (_, _) =>
             {
                 var s = _monitor.Next();
+                // A non-Microsoft process saturating a core for a minute (20 samples of 3 s) is worth a word.
+                var busy = await Task.Run(() => _busyWatcher.Check(20));
+                string warning = busy is null ? "" : $"\n⚠ {busy.Name} usa il {busy.Cpu:P0} della CPU da più di un minuto";
+                if (busy is not null && _lastBusyPid != busy.Pid)
+                {
+                    _lastBusyPid = busy.Pid;
+                    Notifications.Show("WinCleaner", $"{busy.Name} usa la CPU al {busy.Cpu:P0} da più di un minuto. Apri Attività per vedere cos'è.");
+                }
                 _tray?.SetTooltip($"WinCleaner\nCPU {s.CpuUsage:P0} · Memoria {s.MemoryUsage:P0}\nDisco C: {Format.Bytes(s.DiskFree)} liberi" +
-                                  (s.BatteryLevel is { } b ? $"\nBatteria {b:P0}{(s.IsCharging ? " in carica" : "")}" : ""));
+                                  (s.BatteryLevel is { } b ? $"\nBatteria {b:P0}{(s.IsCharging ? " in carica" : "")}" : "") + warning);
             };
             _trayTimer.Start();
         }

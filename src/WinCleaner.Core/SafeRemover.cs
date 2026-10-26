@@ -132,6 +132,43 @@ public sealed class SafeRemover
         return null;
     }
 
+    /// <summary>
+    /// Moves one item into an already open folder (same volume) under a new
+    /// name, with the same checks as a removal: inside an allowed root, no
+    /// reparse point on the way, not TrustedInstaller's, not WRP. Nothing is
+    /// ever replaced. Used by the quarantine.
+    /// </summary>
+    public RemovalOutcome MoveInto(string path, SafeFileHandle destination, string newName)
+    {
+        RemovalOutcome Fail(RemovalError error, string? message = null) => new(path, 0, error, message);
+        if (!PathGuard.TrySplit(path, out _, out var components) || components.Length == 0) return Fail(RemovalError.InvalidPath);
+        if (AllowedRoots.Any(r => string.Equals(r, path, StringComparison.OrdinalIgnoreCase))) return Fail(RemovalError.IsAllowedRoot);
+        string? root = RootFor(path);
+        if (root is null) return Fail(RemovalError.OutsideAllowedRoots);
+        if (ProtectedPaths.Any(p => PathGuard.IsSameOrInside(p, path) || PathGuard.IsSameOrInside(path, p))) return Fail(RemovalError.SystemProtected);
+        var relative = PathGuard.RelativeComponents(path, root);
+        try
+        {
+            using var rootHandle = PinnedFileSystem.OpenDirectoryPath(root);
+            using var parent = PinnedFileSystem.OpenPath(rootHandle, relative[..^1]);
+            using var item = PinnedFileSystem.OpenRelative(parent, relative[^1], HandleTree.ItemAccess);
+            if (PinnedFileSystem.IsOwnedByTrustedInstaller(item)) return Fail(RemovalError.SystemProtected, "TrustedInstaller");
+            var info = PinnedFileSystem.GetInfo(item);
+            if (!info.IsDirectory && IsWindowsProtected(path)) return Fail(RemovalError.SystemProtected, "WRP");
+            if (Mode == RemovalMode.DryRun) return new RemovalOutcome(path, 0, null);
+            long size = HandleTree.Measure(item, CancellationToken.None);
+            PinnedFileSystem.Rename(item, destination, newName);
+            var outcome = new RemovalOutcome(path, size, null, newName);
+            _log?.Write($"quarantine\tOK {size}\t{path}");
+            return outcome;
+        }
+        catch (ReparsePointException e) { return Fail(RemovalError.ReparsePointInPath, e.Message); }
+        catch (FileSystemException e) when (e.IsNotFound) { return Fail(RemovalError.NotFound); }
+        catch (FileSystemException e) when (e.IsInUse) { return Fail(RemovalError.InUse, e.Message); }
+        catch (FileSystemException e) when (e.IsAccessDenied) { return Fail(RemovalError.AccessDenied, e.Message); }
+        catch (FileSystemException e) { return Fail(RemovalError.Failed, e.Message); }
+    }
+
     private RemovalOutcome Process(string path, RemovalMode mode, Dictionary<char, SafeFileHandle?>? bins,
         bool measure, CancellationToken cancellation)
     {

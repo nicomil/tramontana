@@ -39,6 +39,8 @@ public sealed class Settings
     public bool WelcomeShown { get; set; }
     public bool RestorePointBeforeRegistry { get; set; } = true;
     public List<string> IgnoredFindings { get; set; } = [];
+    /// <summary>Signers the user trusts: their warnings are hidden in Protection.</summary>
+    public List<string> TrustedPublishers { get; set; } = [];
     public DateTime? LastHealthCheck { get; set; }
 
     private static readonly string FilePath = Path.Combine(KnownPaths.LocalAppData, "WinCleaner", "settings.json");

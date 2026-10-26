@@ -30,7 +30,7 @@ Riferimenti: le funzioni pubbliche di CCleaner Pro (Controllo integrità, Pulizi
 - **Privacy** — Chromium (History, Cookies, Web Data, Login Data, Sessions), Gecko (places, cookies, formhistory, logins.json, sessionstore), Recent, Jump List, MRU di Explorer, Appunti, profili Wi‑Fi (`netsh wlan export`, XML), ConsentStore per fotocamera, microfono e posizione.
 - **Avvio automatico** — Run/RunOnce (utente, macchina, 32 bit), cartelle Esecuzione automatica, attività fuori da `\Microsoft\`, servizi automatici non Microsoft; firma Authenticode senza rete.
 - **Manutenzione** — elenco chiuso (`MaintenanceTask`), comandi fissi.
-- **Protezione** — controlli euristici con motivo, nessuna rimozione automatica; analisi rapida delegata a Defender (`MpCmdRun -Scan -ScanType 1`).
+- **Protezione** — controlli euristici con motivo, nessuna rimozione automatica; analisi rapida delegata a Defender (`MpCmdRun -Scan -ScanType 1`). Il piano di upgrade M7 (persistenza completa, Defender, processi, quarantena, firme) è in `protection-upgrade.md`.
 
 ## Verifiche fatte sul mini PC
 - Explorer mostra gli elementi spostati nel Cestino nella posizione originale (test automatico).

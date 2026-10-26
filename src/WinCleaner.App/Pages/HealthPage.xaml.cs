@@ -41,7 +41,7 @@ public sealed partial class HealthPage : Page
         {
             var junk = S.Modules["system-junk"].ScanAsync();
             var bin = S.Modules["recycle-bin"].ScanAsync();
-            var protection = Task.Run(() => (IReadOnlyList<Finding>)ProtectionScanner.Scan(S.Settings.IgnoredFindings));
+            var protection = ProtectionActions.ScanAsync().ContinueWith(t => (IReadOnlyList<Finding>)t.Result);
             var startup = Task.Run(() => (IReadOnlyList<StartupItem>)StartupManager.List());
             var updates = Task.Run(async () =>
             {

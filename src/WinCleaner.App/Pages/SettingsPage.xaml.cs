@@ -41,11 +41,25 @@ public sealed partial class SettingsPage : Page
             try { Scheduler.Apply(S.Schedule); }
             catch (Exception e) { _ = Dialogs.InfoAsync("Pianificazione non riuscita", e.Message); }
         };
-        Setting("Analisi pianificata", "Cerca i file inutili e manda una notifica se c'è più di 500 MB da liberare. Non rimuove nulla da sola.", schedule);
+        Setting("Analisi pianificata", "Cerca i file inutili e controlla la Protezione: notifica se c'è più di 500 MB da liberare o se compare un nuovo pericolo. Non rimuove nulla da sola.", schedule);
 
         Toggle("Icona nell'area di notifica", "Mostra CPU, memoria e disco e offre le azioni rapide.", S.TrayIcon, v => { S.TrayIcon = v; App.Window?.EnableTray(v); });
         Toggle("Chiudendo la finestra resta nell'area di notifica", "Altrimenti chiudere la finestra esce dall'app.", S.CloseToTray, v => S.CloseToTray = v);
         Toggle("Avvia con Windows", "Parte nell'area di notifica, senza aprire la finestra.", S.StartWithWindows, v => { S.StartWithWindows = v; StartWithWindows.Apply(v); });
+
+        Section("Firme malware (Protezione)");
+        Panel.Children.Add(new TextBlock { Style = UI.Style("Caption"), TextWrapping = TextWrapping.Wrap, MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left,
+            Text = "WinCleaner non scarica nulla. Aggiungi qui l'elenco LOLDrivers (drivers.json), l'esportazione di MalwareBazaar (CSV di hash SHA-256), set di regole YARA (.yar) e yara64.exe dalla pagina delle release ufficiali: le regole di base di WinCleaner funzionano solo con yara64.exe presente. Confronta lo SHA-256 mostrato con quello pubblicato." });
+        RulesList = new StackPanel { Spacing = 4 };
+        Panel.Children.Add(RulesList);
+        FillRules();
+        var rulesButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        rulesButtons.Children.Add(UI.Button("Aggiungi file…", async (_, _) => await AddRulesAsync()));
+        rulesButtons.Children.Add(new HyperlinkButton { Content = "LOLDrivers", NavigateUri = new Uri("https://www.loldrivers.io/api/") });
+        rulesButtons.Children.Add(new HyperlinkButton { Content = "MalwareBazaar", NavigateUri = new Uri("https://bazaar.abuse.ch/export/") });
+        rulesButtons.Children.Add(new HyperlinkButton { Content = "YARA-Forge", NavigateUri = new Uri("https://github.com/YARAHQ/yara-forge/releases") });
+        rulesButtons.Children.Add(new HyperlinkButton { Content = "YARA (yara64.exe)", NavigateUri = new Uri("https://github.com/VirusTotal/yara/releases") });
+        Panel.Children.Add(rulesButtons);
 
         Section("Sicurezza e registri");
         Action("Registro delle operazioni", "Ogni file rimosso, spostato o saltato, con data ed esito.", "Apri", () => Shell.Reveal(OperationLog.Standard.FilePath));
@@ -64,6 +78,45 @@ public sealed partial class SettingsPage : Page
 
         Section("Informazioni");
         Panel.Children.Add(new TextBlock { Text = $"WinCleaner {typeof(App).Assembly.GetName().Version?.ToString(3)} · uso personale", Style = UI.Style("Caption") });
+    }
+
+    private StackPanel? RulesList;
+
+    private void FillRules()
+    {
+        if (RulesList is null) return;
+        RulesList.Children.Clear();
+        var store = new WinCleaner.Modules.Protection.Rules.RuleStore();
+        var files = store.Files();
+        if (files.Count == 0) RulesList.Children.Add(new TextBlock { Text = "Nessun file aggiunto: attivi solo i controlli senza firme.", Style = UI.Style("Caption") });
+        foreach (var file in files)
+        {
+            var remove = UI.Button("Rimuovi", (_, _) =>
+            {
+                try { store.Remove(file); } catch (Exception e) { _ = Dialogs.InfoAsync("Non rimosso", e.Message); }
+                FillRules();
+            });
+            var row = UI.Row(null, file.Name, $"{file.Kind} · {Format.Bytes(file.Size)}\nSHA-256 {file.Sha256}", remove);
+            RulesList.Children.Add(new Border { Style = UI.Style("Card"), Child = row, Padding = new Thickness(12, 8, 12, 8) });
+        }
+    }
+
+    private async Task AddRulesAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        foreach (var ext in new[] { ".yar", ".yara", ".csv", ".txt", ".json", ".exe" }) picker.FileTypeFilter.Add(ext);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.Window!));
+        var picked = await picker.PickMultipleFilesAsync();
+        if (picked is null || picked.Count == 0) return;
+        var store = new WinCleaner.Modules.Protection.Rules.RuleStore();
+        var problems = new List<string>();
+        foreach (var file in picked)
+        {
+            try { await Task.Run(() => store.Add(file.Path)); }
+            catch (Exception e) { problems.Add($"{file.Name}: {e.Message}"); }
+        }
+        FillRules();
+        if (problems.Count > 0) await Dialogs.InfoAsync("Alcuni file non sono stati aggiunti", string.Join("\n", problems));
     }
 
     private void Section(string title) =>

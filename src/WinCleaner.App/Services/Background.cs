@@ -47,6 +47,17 @@ public static class ScheduledScan
             var report = await new SystemJunkModule().ScanAsync(null, CancellationToken.None);
             long size = report.AllItems.Where(i => i.AutoSelect && !i.NeedsAdmin).Sum(i => i.Size);
             OperationLog.Standard.Write($"scheduled\tscan\t{size}");
+            // Protection too: only new dangers are worth a notification.
+            var settings = Settings.Load();
+            var findings = await Task.Run(() => WinCleaner.Modules.Protection.ProtectionScanner.Scan(settings.IgnoredFindings, settings.TrustedPublishers));
+            var dangers = ProtectionActions.NewDangers(findings).ToList();
+            OperationLog.Standard.Write($"scheduled\tprotection\t{findings.Count}\tnew-dangers={dangers.Count}");
+            if (dangers.Count > 0)
+            {
+                Notifications.Register();
+                Notifications.Show("WinCleaner: controlla la Protezione", dangers.Count == 1 ? $"Nuovo pericolo: {dangers[0].Title}" : $"{dangers.Count} nuovi pericoli, il primo: {dangers[0].Title}");
+                await Task.Delay(1500);
+            }
             if (size >= Threshold)
             {
                 Notifications.Register();
