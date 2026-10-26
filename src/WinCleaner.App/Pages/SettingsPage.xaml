@@ -1,0 +1,11 @@
+<Page
+    x:Class="WinCleaner.App.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel Padding="28,12,28,28" Spacing="8" MaxWidth="900" HorizontalAlignment="Left">
+            <TextBlock Text="Impostazioni" Style="{StaticResource PageTitle}" Margin="0,0,0,12" />
+            <StackPanel x:Name="Panel" Spacing="8" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

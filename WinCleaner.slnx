@@ -8,6 +8,7 @@
     <Project Path="src/WinCleaner.Modules/WinCleaner.Modules.csproj" />
     <Project Path="src/WinCleaner.Cli/WinCleaner.Cli.csproj" />
     <Project Path="src/WinCleaner.Helper/WinCleaner.Helper.csproj" />
+    <Project Path="src/WinCleaner.App/WinCleaner.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WinCleaner.Tests/WinCleaner.Tests.csproj" />
