@@ -69,7 +69,16 @@ public sealed partial class UpdatesPage : Page
     private async Task InstallAsync()
     {
         var chosen = _rows.Where(r => r.Box.IsChecked == true).ToList();
-        if (chosen.Count == 0 || _busy) return;
+        if (_busy)
+        {
+            UI.Show(Bar, "Attendi", "Il controllo degli aggiornamenti è ancora in corso.", InfoBarSeverity.Informational);
+            return;
+        }
+        if (chosen.Count == 0)
+        {
+            UI.Show(Bar, "Nessun programma scelto", "Spunta i programmi da aggiornare.", InfoBarSeverity.Informational);
+            return;
+        }
         if (!await Dialogs.ConfirmAsync("Aggiornare?", $"{chosen.Count} programmi verranno aggiornati uno alla volta. Chiudili prima: alcuni installer li chiudono da soli. Windows può chiedere il permesso di amministratore.", "Aggiorna")) return;
         _busy = true;
         _install.IsEnabled = _check.IsEnabled = false;

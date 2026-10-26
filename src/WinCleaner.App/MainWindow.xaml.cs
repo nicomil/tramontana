@@ -75,8 +75,17 @@ public sealed partial class MainWindow : Window
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
     {
         Activated -= OnFirstActivated;
-        Dialogs.Root = Content.XamlRoot;
         Navigate("health");
+        // Dialogs need the content in the visual tree (its XamlRoot), which comes with Loaded.
+        if (Content is FrameworkElement root)
+        {
+            if (root.XamlRoot is not null) ShowWelcomeIfNeeded();
+            else root.Loaded += (_, _) => ShowWelcomeIfNeeded();
+        }
+    }
+
+    private void ShowWelcomeIfNeeded()
+    {
         if (!AppState.Current.Settings.WelcomeShown) _ = ShowWelcomeAsync();
     }
 

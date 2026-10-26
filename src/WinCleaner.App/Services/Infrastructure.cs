@@ -101,11 +101,19 @@ public static class Shell
 /// <summary>Content dialogs with the window's XamlRoot.</summary>
 public static class Dialogs
 {
-    public static XamlRoot? Root { get; set; }
+    /// <summary>
+    /// Read when needed: the window's content gets its XamlRoot only once it
+    /// is in the visual tree, which can be after the first Activated event.
+    /// </summary>
+    public static XamlRoot? Root => App.Window?.Content?.XamlRoot;
 
     public static async Task<bool> ConfirmAsync(string title, string message, string primary, bool destructive = false)
     {
-        if (Root is null) return false;
+        if (Root is null)
+        {
+            OperationLog.Standard.Write($"app\tdialog without XamlRoot\t{title}");
+            return false;
+        }
         var dialog = new ContentDialog
         {
             Title = title,
@@ -133,6 +141,7 @@ public static class Dialogs
 
     public static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog)
     {
+        if (Root is null) return ContentDialogResult.None;
         dialog.XamlRoot = Root;
         return await dialog.ShowAsync();
     }
