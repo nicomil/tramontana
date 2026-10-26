@@ -41,6 +41,12 @@ public sealed record CleaningRule
     public string[] Processes { get; init; } = [];
     /// <summary>The matched path's parent must contain at least one of these names.</summary>
     public string[] RequireAnySibling { get; init; } = [];
+    /// <summary>
+    /// Index of the path component (after the token) that names the owning
+    /// program, e.g. 0 for <c>%APPDATA%\*\Cache</c>: the match is skipped while a
+    /// process with that name runs (Discord, Slack, Code…).
+    /// </summary>
+    public int? OwnerComponent { get; init; }
 }
 
 public sealed record RuleSet
@@ -101,41 +107,19 @@ public sealed class RuleEngine
         var notes = new List<string>();
         var unreadable = new List<string>();
 
-        foreach (var rule in set.Rules)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            var runningOwner = rule.Processes.FirstOrDefault(_running.Contains);
-            if (runningOwner is not null)
-            {
-                notes.Add($"{rule.Title}: saltato perché {runningOwner}.exe è aperto");
-                continue;
-            }
+        // Rules are measured in parallel (the work is mostly waiting for the
+        // disk), then merged in their original order.
+        var results = new (List<ScanItem> Items, List<string> Notes, List<string> Unreadable)[set.Rules.Length];
+        Parallel.For(0, set.Rules.Length, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = cancellation },
+            i => results[i] = EvaluateRule(set, set.Rules[i], cancellation));
 
-            var excludes = set.GlobalExcludes.Concat(rule.Excludes).ToArray();
-            var items = new List<ScanItem>();
-            foreach (var pattern in rule.Paths)
-            {
-                foreach (var match in Expand(pattern))
-                {
-                    if (rule.RequireAnySibling.Length > 0 && !HasSibling(match, rule.RequireAnySibling)) continue;
-                    if (rule.Target == RuleTarget.Itself)
-                    {
-                        if (MakeItem(match, rule, excludes, cancellation) is { } item) items.Add(item);
-                        continue;
-                    }
-                    if (!Directory.Exists(match)) continue;
-                    try
-                    {
-                        foreach (var child in FileWalker.Children(match))
-                        {
-                            if (MakeItem(child.Path, rule, excludes, cancellation) is { } item) items.Add(item);
-                        }
-                    }
-                    catch (UnauthorizedAccessException) { unreadable.Add(match); }
-                    catch (IOException) { unreadable.Add(match); }
-                }
-            }
-            items.RemoveAll(i => i.Size <= 0);
+        for (int i = 0; i < set.Rules.Length; i++)
+        {
+            var rule = set.Rules[i];
+            var (items, ruleNotes, ruleUnreadable) = results[i];
+            notes.AddRange(ruleNotes);
+            unreadable.AddRange(ruleUnreadable);
+            items.RemoveAll(item => item.Size <= 0);
             if (items.Count == 0) continue;
             if (!byCategory.TryGetValue(rule.Category, out var entry))
             {
@@ -161,6 +145,68 @@ public sealed class RuleEngine
             categories.Add(new ScanCategory(key, first.Title, kept) { Description = first.Description, Group = first.Group });
         }
         return new Output(categories, notes, unreadable);
+    }
+
+    private (List<ScanItem>, List<string>, List<string>) EvaluateRule(RuleSet set, CleaningRule rule, CancellationToken cancellation)
+    {
+        var items = new List<ScanItem>();
+        var notes = new List<string>();
+        var unreadable = new List<string>();
+        var runningOwner = rule.Processes.FirstOrDefault(_running.Contains);
+        if (runningOwner is not null)
+        {
+            notes.Add($"{rule.Title}: saltato perché {runningOwner}.exe è aperto");
+            return (items, notes, unreadable);
+        }
+
+        var excludes = set.GlobalExcludes.Concat(rule.Excludes).ToArray();
+        foreach (var pattern in rule.Paths)
+        {
+            string? basePath = rule.OwnerComponent is null ? null : BasePath(pattern);
+            foreach (var match in Expand(pattern))
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (rule.RequireAnySibling.Length > 0 && !HasSibling(match, rule.RequireAnySibling)) continue;
+                if (basePath is not null && rule.OwnerComponent is int index && PathGuard.IsStrictlyInside(match, basePath))
+                {
+                    var parts = PathGuard.RelativeComponents(match, basePath);
+                    if (index < parts.Length && _running.Contains(parts[index]))
+                    {
+                        notes.Add($"{rule.Title} di {parts[index]}: saltata perché il programma è aperto");
+                        continue;
+                    }
+                }
+                if (rule.Target == RuleTarget.Itself)
+                {
+                    if (MakeItem(match, rule, excludes, cancellation) is { } item) items.Add(item);
+                    continue;
+                }
+                if (!Directory.Exists(match)) continue;
+                try
+                {
+                    foreach (var child in FileWalker.Children(match).ToList())
+                    {
+                        if (MakeItem(child.Path, rule, excludes, cancellation) is { } item) items.Add(item);
+                    }
+                }
+                catch (UnauthorizedAccessException) { unreadable.Add(match); }
+                catch (IOException) { unreadable.Add(match); }
+            }
+        }
+        return (items, notes, unreadable);
+    }
+
+    private static int SplitIndex(string pattern) =>
+        pattern.IndexOf('\\', pattern.StartsWith('%') ? Math.Max(pattern.IndexOf('%', 1) + 1, 0) : 3);
+
+    /// <summary>The expanded token part of a pattern (a drive root keeps its backslash).</summary>
+    public string? BasePath(string pattern)
+    {
+        int split = SplitIndex(pattern);
+        string head = split < 0 ? pattern : pattern[..split];
+        string? basePath = _expand(head);
+        if (basePath is { Length: 2 } && basePath[1] == ':') basePath += "\\";
+        return basePath is not null && PathGuard.IsValidPath(basePath) ? basePath : null;
     }
 
     internal static bool HasAncestor(string path, HashSet<string> paths)
@@ -199,10 +245,9 @@ public sealed class RuleEngine
     /// </summary>
     public IEnumerable<string> Expand(string pattern)
     {
-        int split = pattern.IndexOf('\\', pattern.StartsWith('%') ? pattern.IndexOf('%', 1) + 1 : 3);
-        string head = split < 0 ? pattern : pattern[..split];
-        string? basePath = _expand(head);
-        if (basePath is null || !PathGuard.IsValidPath(basePath) || !Directory.Exists(basePath)) yield break;
+        int split = SplitIndex(pattern);
+        string? basePath = BasePath(pattern);
+        if (basePath is null || !Directory.Exists(basePath)) yield break;
         if (split < 0) { yield return basePath; yield break; }
 
         var current = new List<string> { basePath };

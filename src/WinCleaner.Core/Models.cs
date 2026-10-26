@@ -21,7 +21,10 @@ public sealed record ScanItem(
     string? Detail = null,
     DateTime? LastWriteUtc = null)
 {
-    public string DisplayName => System.IO.Path.GetFileName(Path) is { Length: > 0 } name ? name : Path;
+    /// <summary>Name to show instead of the file name (e.g. the original name of a Recycle Bin item).</summary>
+    public string? Label { get; init; }
+
+    public string DisplayName => Label ?? (System.IO.Path.GetFileName(Path) is { Length: > 0 } name ? name : Path);
 }
 
 /// <summary>A group of items of the same kind (for example "Temporary files").</summary>
@@ -66,4 +69,10 @@ public interface ICleanerModule
     IReadOnlyList<string> AllowedRoots { get; }
 
     Task<ScanReport> ScanAsync(IProgress<string>? progress, CancellationToken cancellation);
+}
+
+/// <summary>A module that removes its items itself instead of through <see cref="SafeRemover"/>.</summary>
+public interface ICustomCleaner
+{
+    IReadOnlyList<RemovalOutcome> Clean(IReadOnlyList<ScanItem> items, RemovalMode mode, CancellationToken cancellation);
 }

@@ -54,13 +54,20 @@ public sealed class SafeRemover
     /// <summary>Paths that are never removed, nor any folder that contains them.</summary>
     public IReadOnlyList<string> ProtectedPaths { get; }
 
+    /// <summary>
+    /// Single items allowed outside the roots, as full paths whose last
+    /// component may use wildcards (e.g. <c>C:\FOUND.*</c>, <c>C:\Windows\MEMORY.DMP</c>).
+    /// </summary>
+    public IReadOnlyList<string> AllowedItems { get; }
+
     public RemovalMode Mode { get; }
 
     public SafeRemover(IEnumerable<string> allowedRoots, RemovalMode mode, OperationLog? log = null,
-        IEnumerable<string>? protectedPaths = null)
+        IEnumerable<string>? protectedPaths = null, IEnumerable<string>? allowedItems = null)
     {
         AllowedRoots = allowedRoots.Where(PathGuard.IsValidPath).Select(KnownPaths.Long)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        AllowedItems = (allowedItems ?? []).ToList();
         ProtectedPaths = (protectedPaths ?? DefaultProtectedPaths()).Select(KnownPaths.Long).ToList();
         Mode = mode;
         _log = log;
@@ -106,7 +113,24 @@ public sealed class SafeRemover
 
     /// <summary>The allowed root that strictly contains <paramref name="path"/>, preferring the deepest.</summary>
     public string? RootFor(string path) =>
-        AllowedRoots.Where(r => PathGuard.IsStrictlyInside(path, r)).OrderByDescending(r => r.Length).FirstOrDefault();
+        AllowedRoots.Where(r => PathGuard.IsStrictlyInside(path, r)).OrderByDescending(r => r.Length).FirstOrDefault()
+        ?? ItemParentFor(path);
+
+    /// <summary>The parent folder when <paramref name="path"/> is one of the allowed single items.</summary>
+    private string? ItemParentFor(string path)
+    {
+        string? parent = Path.GetDirectoryName(path);
+        string name = Path.GetFileName(path);
+        if (parent is null) return null;
+        foreach (var pattern in AllowedItems)
+        {
+            string? patternParent = Path.GetDirectoryName(pattern);
+            if (patternParent is not null && string.Equals(patternParent, parent, StringComparison.OrdinalIgnoreCase)
+                && FileWalker.Matches(name, Path.GetFileName(pattern)))
+                return parent;
+        }
+        return null;
+    }
 
     private RemovalOutcome Process(string path, RemovalMode mode, Dictionary<char, SafeFileHandle?>? bins,
         bool measure, CancellationToken cancellation)

@@ -242,3 +242,34 @@ public class SafeRemoverTests
         Assert.Equal((@"C:\x\y.txt", 42L, when), parsed);
     }
 }
+
+public class ExplorerRecycleBinTests
+{
+    [Fact]
+    public void ExplorerSeesRecycledItemsAtTheirOriginalPlace()
+    {
+        using var t = new TempDir();
+        var root = t.Dir("root");
+        var name = $"shell-visible-{Guid.NewGuid():N}.txt";
+        var file = t.File($@"root\{name}", 64);
+
+        var outcome = new SafeRemover([root], RemovalMode.Recycle, null, []).Remove([file]).Single();
+        Assert.True(outcome.Succeeded, $"{outcome.Error} {outcome.Message}");
+
+        var shellType = Type.GetTypeFromProgID("Shell.Application")!;
+        dynamic shell = Activator.CreateInstance(shellType)!;
+        dynamic bin = shell.Namespace(10);
+        bool found = false;
+        foreach (dynamic item in bin.Items())
+        {
+            string itemName = item.Name;
+            string location = bin.GetDetailsOf(item, 1);
+            if (itemName.Contains("shell-visible") && itemName.StartsWith(Path.GetFileNameWithoutExtension(name), StringComparison.OrdinalIgnoreCase)
+                && string.Equals(location, root, StringComparison.OrdinalIgnoreCase))
+                found = true;
+        }
+        var recycled = RecycleBin.List(file[0]).Single(i => i.OriginalPath.Equals(file, StringComparison.OrdinalIgnoreCase));
+        RecycleBin.Purge(recycled);
+        Assert.True(found, "Explorer does not list the item");
+    }
+}

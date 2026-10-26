@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>wccli</AssemblyName>
+    <RootNamespace>WinCleaner.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinCleaner.Modules\WinCleaner.Modules.csproj" />
+  </ItemGroup>
+</Project>
