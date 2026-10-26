@@ -29,6 +29,13 @@ dotnet test tests\WinCleaner.Tests -p:Platform=x64
 powershell -ExecutionPolicy Bypass -File scripts\publish.ps1      # artifacts\WinCleaner-x64
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1      # in Program Files, con voce in App installate
 ```
+Installazione su un altro PC:
+1. Sul PC di sviluppo: `powershell -ExecutionPolicy Bypass -File scripts\publish.ps1 -Zip` crea `artifacts\WinCleaner-<versione>-x64.zip` (circa 130 MB; `-Arch arm64` per i PC ARM).
+2. Copia lo zip sull'altro PC (chiavetta, rete, cloud), estrailo e fai doppio clic su `Installa.cmd`: chiede l'amministratore, installa in `C:\Program Files\WinCleaner`, aggiunge WinCleaner al menu Start e ad App installate.
+3. Per toglierlo: Impostazioni → App → WinCleaner → Disinstalla (i dati in `%LOCALAPPDATA%\WinCleaner` restano).
+
+Non serve installare .NET o altro: l'app contiene tutto. Senza un certificato di firma, SmartScreen può mostrare «Windows ha protetto il PC» al primo avvio di `Installa.cmd`: «Ulteriori informazioni» → «Esegui comunque».
+
 Prova delle scansioni (sola lettura, salvo `clean`, che di default è una prova):
 ```powershell
 wccli scan system-junk|recycle-bin|registry|large-old-files|duplicates|similar-images|installers|orphans [--items]
