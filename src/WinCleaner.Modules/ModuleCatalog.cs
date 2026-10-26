@@ -1,4 +1,5 @@
 using WinCleaner.Core;
+using WinCleaner.Modules.Apps;
 
 namespace WinCleaner.Modules;
 
@@ -12,6 +13,8 @@ public static class ModuleCatalog
         new LargeOldFilesModule(),
         new DuplicatesModule(),
         new SimilarImagesModule(),
+        new InstallersModule(),
+        new OrphansModule(),
     ];
 
     public static ICleanerModule? Find(string id) =>

@@ -11,6 +11,18 @@ public enum RiskLevel
     High,
 }
 
+/// <summary>What a scan item refers to.</summary>
+public enum ItemKind
+{
+    File,
+    /// <summary>A registry key (Path is the key, e.g. HKEY_CURRENT_USER\Software\Vendor\App).</summary>
+    RegistryKey,
+    /// <summary>A registry value (Path is the key, <see cref="ScanItem.ValueName"/> the value).</summary>
+    RegistryValue,
+    /// <summary>Information only: shown, never removed by the generic cleaner.</summary>
+    Info,
+}
+
 /// <summary>A single file or folder found by a scan.</summary>
 public sealed record ScanItem(
     string Path,
@@ -23,6 +35,14 @@ public sealed record ScanItem(
 {
     /// <summary>Name to show instead of the file name (e.g. the original name of a Recycle Bin item).</summary>
     public string? Label { get; init; }
+
+    public ItemKind Kind { get; init; } = ItemKind.File;
+
+    /// <summary>For <see cref="ItemKind.RegistryValue"/>: the value name ("" is the default value).</summary>
+    public string? ValueName { get; init; }
+
+    /// <summary>Unique key for selections (path, plus the value name for registry values).</summary>
+    public string Key => Kind == ItemKind.RegistryValue ? Path + "\\::" + ValueName : Path;
 
     public string DisplayName => Label ?? (System.IO.Path.GetFileName(Path) is { Length: > 0 } name ? name : Path);
 }

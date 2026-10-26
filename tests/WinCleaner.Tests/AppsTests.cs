@@ -1,0 +1,99 @@
+using Microsoft.Win32;
+using WinCleaner.Core;
+using WinCleaner.Modules.Apps;
+
+namespace WinCleaner.Tests;
+
+public class AppsTests
+{
+    [Theory]
+    [InlineData("Opera Stable 131.0.5877.116", "Opera Stable")]
+    [InlineData("Python 3.11.9 (64-bit)", "Python")]
+    [InlineData("PowerToys (Preview) x64", "PowerToys (Preview)")]
+    [InlineData("Ollama version 0.31.1", "Ollama")]
+    [InlineData("VLC media player", "VLC media player")]
+    [InlineData("Cursor (User)", "Cursor")]
+    public void NormalizesProgramNames(string name, string expected) => Assert.Equal(expected, LeftoverFinder.NormalizeName(name));
+
+    [Fact]
+    public void ParsesWingetTablesInAnyLanguage()
+    {
+        const string output = """
+            Nome                        Id                        Versione       Disponibile    Origine
+            -------------------------------------------------------------------------------------------
+            Cursor (User)               Anysphere.Cursor          3.9.16         3.20.14        winget
+            Opera Stable 131.0.5877.116 Opera.Opera               131.0.5877.116 137.0.6036.39  winget
+            PowerToys (Preview) x64     XP89DCGQ3K6VLD            0.100.0        0.102.2933.0   msstore
+            3 aggiornamenti disponibili.
+            """;
+        var updates = WingetUpdates.Parse(output);
+        Assert.Equal(3, updates.Count);
+        Assert.Equal(new AvailableUpdate("Opera Stable 131.0.5877.116", "Opera.Opera", "131.0.5877.116", "137.0.6036.39", "winget"), updates[1]);
+        Assert.Equal("msstore", updates[2].Source);
+    }
+
+    [Fact]
+    public void UninstallCommandsAreParsedSafely()
+    {
+        var msi = new InstalledProgram { Id = "x", Name = "x", UninstallString = "MsiExec.exe /I{12345678-1234-1234-1234-123456789ABC}" };
+        Assert.Equal(("msiexec.exe", "/x {12345678-1234-1234-1234-123456789ABC}"), ProgramUninstaller.Command(msi));
+        var steam = new InstalledProgram { Id = "x", Name = "x", UninstallString = "steam://uninstall/570" };
+        Assert.Equal(("steam://uninstall/570", ""), ProgramUninstaller.Command(steam));
+        var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var quoted = new InstalledProgram { Id = "x", Name = "x", UninstallString = $"\"{cmd}\" /c echo" };
+        Assert.Equal((cmd, "/c echo"), ProgramUninstaller.Command(quoted));
+        var missing = new InstalledProgram { Id = "x", Name = "x", UninstallString = @"C:\nope\unins000.exe /SILENT" };
+        Assert.Null(ProgramUninstaller.Command(missing));
+    }
+
+    [Theory]
+    [InlineData(@"HKCU\Software\Vendor\App", null, true)]
+    [InlineData(@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Vendor\App", null, true)]
+    [InlineData(@"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\App", null, true)]
+    [InlineData(@"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "App", true)]
+    [InlineData(@"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", null, false)]
+    [InlineData(@"HKCU\Software\Microsoft\Office", null, false)]
+    [InlineData(@"HKCU\Software\Classes\.txt", null, false)]
+    [InlineData(@"HKCU\Software\Policies\Vendor", null, false)]
+    [InlineData(@"HKCU\Software", null, false)]
+    [InlineData(@"HKLM\SYSTEM\CurrentControlSet\Services\x", null, false)]
+    [InlineData(@"HKEY_USERS\S-1-5-18\Software\Vendor", null, false)]
+    [InlineData(@"HKCU\Software\\Vendor", null, false)]
+    public void RegistryAllowList(string key, string? value, bool allowed) =>
+        Assert.Equal(allowed, RegistryCleaner.IsAllowed(new RegistryTarget(key, value)));
+
+    [Fact]
+    public void RegistryKeysAreBackedUpBeforeDeletion()
+    {
+        string name = "WinCleanerTest-" + Guid.NewGuid().ToString("N")[..8];
+        using (var key = Registry.CurrentUser.CreateSubKey($@"Software\{name}\App"))
+            key.SetValue("Setting", "42");
+        using var t = new TempDir();
+        var cleaner = new RegistryCleaner(RemovalMode.Delete, null, t.Path);
+
+        var outcome = cleaner.Remove([new RegistryTarget($@"HKCU\Software\{name}")]).Single();
+
+        Assert.True(outcome.Succeeded, outcome.Message);
+        Assert.Null(Registry.CurrentUser.OpenSubKey($@"Software\{name}"));
+        var backup = File.ReadAllText(outcome.Message!);
+        Assert.Contains(name, backup);
+        Assert.Contains("\"Setting\"=\"42\"", backup);
+    }
+
+    [Fact]
+    public void VersionsCompareNumerically()
+    {
+        Assert.True(InstallersModule.CompareVersions("10.2", "9.15") > 0);
+        Assert.Equal(0, InstallersModule.CompareVersions("3.0.24", "3.0.24.0"));
+        Assert.True(InstallersModule.CompareVersions("3.0.23", "3.0.24") < 0);
+    }
+
+    [Fact]
+    public void InstallersMatchInstalledPrograms()
+    {
+        var installed = new List<InstalledProgram> { new() { Id = "a", Name = "VLC media player", Version = "3.0.24" } };
+        Assert.NotNull(InstallersModule.FindInstalled("VLC media player", installed));
+        Assert.Null(InstallersModule.FindInstalled("Setup", installed));
+        Assert.Null(InstallersModule.FindInstalled("VLC Remote", installed));
+    }
+}

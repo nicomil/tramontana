@@ -1,12 +1,45 @@
 using System.Diagnostics;
 using WinCleaner.Core;
 using WinCleaner.Modules;
+using WinCleaner.Modules.Apps;
 
 // Command-line front end, to try scans from a terminal.
 //   wccli scan <module>                     read only
 //   wccli clean <module> [--mode dry|recycle|delete]
 //                                           removes the preselected user-level items (dry run by default)
 Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+if (args.Length >= 1 && args[0] == "apps")
+{
+    var watch = Stopwatch.StartNew();
+    var programs = InstalledPrograms.All();
+    Console.WriteLine($"{programs.Count} programmi ({watch.ElapsedMilliseconds} ms)");
+    foreach (var p in programs)
+        Console.WriteLine($"  {p.Name,-50} {p.Version,-16} {(p.Source == ProgramSource.Store ? "Store" : p.PerUser ? "utente" : "PC"),-6} {Format.Bytes(p.Size),9} {(p.LastUsedUtc is { } u ? "usato " + UserFilesWalker.Age(u) : ""),-16} {p.InstallLocation}");
+    return 0;
+}
+if (args.Length >= 2 && args[0] == "leftovers")
+{
+    var programs = InstalledPrograms.All();
+    var program = programs.FirstOrDefault(p => p.Name.Contains(args[1], StringComparison.OrdinalIgnoreCase));
+    if (program is null) { Console.WriteLine("programma non trovato"); return 1; }
+    Console.WriteLine($"{program.Name} ({program.InstallLocation}) · disinstallatore: {ProgramUninstaller.Command(program)}");
+    var found = LeftoverFinder.Find(program, programs, uninstalled: args.Contains("--after"));
+    foreach (var c in found.Categories)
+    {
+        Console.WriteLine($"[{c.Title}]");
+        foreach (var i in c.Items) Console.WriteLine($"  {(i.AutoSelect ? "[x]" : "[ ]")} {i.Path} {Format.Bytes(i.Size)} {(i.NeedsAdmin ? "[admin]" : "")} {i.Detail}");
+    }
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "updates")
+{
+    var watch = Stopwatch.StartNew();
+    var updates = await WingetUpdates.CheckAsync(CancellationToken.None);
+    Console.WriteLine($"{updates.Count} aggiornamenti ({watch.ElapsedMilliseconds} ms)");
+    foreach (var u in updates) Console.WriteLine($"  {u.Name,-40} {u.Id,-35} {u.InstalledVersion,-16} -> {u.AvailableVersion,-16} {u.Source}");
+    return 0;
+}
 
 if (args.Length >= 1 && args[0] == "lens")
 {
@@ -54,6 +87,9 @@ foreach (var group in report.Categories.GroupBy(c => c.Group))
         Console.WriteLine($"  {category.Title,-48} {Format.Bytes(category.TotalSize),10}  {category.Items.Count,5} elem. ({auto} presel.){(category.Items.Any(i => i.NeedsAdmin) ? " [admin]" : "")}");
     }
 }
+if (args.Contains("--items"))
+    foreach (var item in report.AllItems.Take(60))
+        Console.WriteLine($"    {(item.AutoSelect ? "[x]" : "[ ]")} {item.DisplayName} {Format.Bytes(item.Size)} · {item.Detail ?? item.Path}");
 foreach (var note in report.Notes) Console.WriteLine("nota: " + note);
 foreach (var path in report.Unreadable.Take(10)) Console.WriteLine("illeggibile: " + path);
 
