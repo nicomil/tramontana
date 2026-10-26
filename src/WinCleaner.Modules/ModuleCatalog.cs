@@ -15,6 +15,7 @@ public static class ModuleCatalog
         new SimilarImagesModule(),
         new InstallersModule(),
         new OrphansModule(),
+        new RegistryModule(),
     ];
 
     public static ICleanerModule? Find(string id) =>

@@ -2,6 +2,9 @@ using System.Diagnostics;
 using WinCleaner.Core;
 using WinCleaner.Modules;
 using WinCleaner.Modules.Apps;
+using WinCleaner.Modules.Performance;
+using WinCleaner.Modules.Privacy;
+using WinCleaner.Modules.Protection;
 
 // Command-line front end, to try scans from a terminal.
 //   wccli scan <module>                     read only
@@ -38,6 +41,41 @@ if (args.Length >= 1 && args[0] == "updates")
     var updates = await WingetUpdates.CheckAsync(CancellationToken.None);
     Console.WriteLine($"{updates.Count} aggiornamenti ({watch.ElapsedMilliseconds} ms)");
     foreach (var u in updates) Console.WriteLine($"  {u.Name,-40} {u.Id,-35} {u.InstalledVersion,-16} -> {u.AvailableVersion,-16} {u.Source}");
+    return 0;
+}
+
+if (args.Length >= 1 && args[0] == "privacy")
+{
+    var watch = Stopwatch.StartNew();
+    var items = PrivacyScanner.Scan();
+    Console.WriteLine($"{items.Count} elementi ({watch.ElapsedMilliseconds} ms)");
+    foreach (var i in items) Console.WriteLine($"  {(i.AutoSelect ? "[x]" : "[ ]")} {i.Owner,-18} {i.Profile,-14} {i.Kind.Title(),-36} {i.Count,7}{(i.NeedsAdmin ? " [admin]" : "")}");
+    foreach (var c in PrivacyScanner.CapabilityUses().Take(8)) Console.WriteLine($"  uso: {c.Capability} {c.App} {c.LastUsedUtc:g}{(c.InUse ? " (in uso)" : "")}");
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "startup")
+{
+    var watch = Stopwatch.StartNew();
+    var items = StartupManager.List();
+    Console.WriteLine($"{items.Count} elementi ({watch.ElapsedMilliseconds} ms)");
+    foreach (var i in items) Console.WriteLine($"  {(i.Enabled ? "on " : "off")} {i.Kind,-14} {i.Name,-40} {i.Signature?.Status,-9} {i.Signature?.Publisher,-30} {(i.IsBroken ? "ROTTO " : "")}{i.Executable}");
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "protection")
+{
+    var watch = Stopwatch.StartNew();
+    var findings = ProtectionScanner.Scan();
+    Console.WriteLine($"{findings.Count} risultati ({watch.ElapsedMilliseconds} ms)");
+    foreach (var f in findings) Console.WriteLine($"  {f.Severity,-8} [{f.Category}] {f.Title}: {f.Reason}");
+    return 0;
+}
+if (args.Length >= 1 && args[0] == "monitor")
+{
+    var monitor = new SystemMonitor();
+    monitor.Next();
+    await Task.Delay(1000);
+    var s = monitor.Next();
+    Console.WriteLine($"CPU {s.CpuUsage:P0} · RAM {Format.Bytes(s.MemoryUsed)} di {Format.Bytes(s.MemoryTotal)} · C: {Format.Bytes(s.DiskFree)} liberi · batteria {(s.BatteryLevel is { } b ? b.ToString("P0") : "-")} · acceso da {(int)s.Uptime.TotalHours} ore · {s.ProcessCount} processi");
     return 0;
 }
 
