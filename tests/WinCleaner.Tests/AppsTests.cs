@@ -97,3 +97,51 @@ public class AppsTests
         Assert.Null(InstallersModule.FindInstalled("VLC Remote", installed));
     }
 }
+
+public class HelperPolicyTests
+{
+    [Theory]
+    [InlineData(@"C:\Program Files\WindowsApps\Some.App_1.0", true)]
+    [InlineData(@"C:\Program Files\Common Files\Vendor", true)]
+    [InlineData(@"C:\ProgramData\Microsoft\Crypto", true)]
+    [InlineData(@"C:\ProgramData\Microsoft\Windows\WER\ReportArchive\x", false)]
+    [InlineData(@"C:\Program Files\OldApp", false)]
+    public void SharedFoldersAreBlocked(string path, bool blocked) =>
+        Assert.Equal(blocked, WinCleaner.Modules.Helper.HelperService.IsBlocked(path));
+
+    [Fact]
+    public async Task HelperRefusesSystemFoldersEvenWhenAsked()
+    {
+        var response = await WinCleaner.Modules.Helper.HelperService.HandleAsync(new WinCleaner.Modules.Helper.HelperRequest
+        {
+            Operation = WinCleaner.Modules.Helper.HelperOperation.Remove,
+            Mode = RemovalMode.DryRun,
+            Paths = [Path.Combine(Environment.SystemDirectory, "drivers"), Path.Combine(KnownPaths.ProgramFiles, "WindowsApps"), KnownPaths.Windows, KnownPaths.UserProfile],
+        }, CancellationToken.None);
+        Assert.True(response.Ok);
+        Assert.All(response.Outcomes, o => Assert.False(o.Succeeded));
+    }
+
+    [Fact]
+    public async Task HelperRefusesUnknownTasksServicesAndRegistry()
+    {
+        var task = await WinCleaner.Modules.Helper.HelperService.HandleAsync(new() { Operation = WinCleaner.Modules.Helper.HelperOperation.DeleteTask, Name = @"\Microsoft\Windows\Defrag\ScheduledDefrag" }, CancellationToken.None);
+        Assert.False(task.Ok);
+        var service = await WinCleaner.Modules.Helper.HelperService.HandleAsync(new() { Operation = WinCleaner.Modules.Helper.HelperOperation.SetServiceStart, Name = "WinDefend", Number = 4 }, CancellationToken.None);
+        Assert.False(service.Ok);
+        var registry = await WinCleaner.Modules.Helper.HelperService.HandleAsync(new() { Operation = WinCleaner.Modules.Helper.HelperOperation.RemoveRegistry, Mode = RemovalMode.DryRun,
+            Registry = [new RegistryTarget(@"HKLM\SYSTEM\CurrentControlSet\Services\WinDefend")] }, CancellationToken.None);
+        Assert.Equal(RemovalError.OutsideAllowedRoots, registry.Outcomes.Single().Error);
+        var approved = await WinCleaner.Modules.Helper.HelperService.HandleAsync(new() { Operation = WinCleaner.Modules.Helper.HelperOperation.SetStartupApproved,
+            Key = @"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run", Name = "SecurityHealth" }, CancellationToken.None);
+        Assert.False(approved.Ok);
+    }
+
+    [Fact]
+    public void BootstrapQuotesPathsForPowerShell()
+    {
+        var script = WinCleaner.Modules.Helper.HelperClient.BootstrapScript(@"C:\Users\O'Brien\app\wchelper.exe", "ABC", "--pipe x --parent 1");
+        Assert.Contains(@"'C:\Users\O''Brien\app\wchelper.exe'", script);
+        Assert.Contains("Get-FileHash", script);
+    }
+}

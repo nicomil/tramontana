@@ -5,6 +5,7 @@ using WinCleaner.Modules.Apps;
 using WinCleaner.Modules.Performance;
 using WinCleaner.Modules.Privacy;
 using WinCleaner.Modules.Protection;
+using WinCleaner.Modules.Helper;
 
 // Command-line front end, to try scans from a terminal.
 //   wccli scan <module>                     read only
@@ -76,6 +77,19 @@ if (args.Length >= 1 && args[0] == "monitor")
     await Task.Delay(1000);
     var s = monitor.Next();
     Console.WriteLine($"CPU {s.CpuUsage:P0} · RAM {Format.Bytes(s.MemoryUsed)} di {Format.Bytes(s.MemoryTotal)} · C: {Format.Bytes(s.DiskFree)} liberi · batteria {(s.BatteryLevel is { } b ? b.ToString("P0") : "-")} · acceso da {(int)s.Uptime.TotalHours} ore · {s.ProcessCount} processi");
+    return 0;
+}
+
+if (args.Length >= 1 && args[0] == "helper-test")
+{
+    var watch = Stopwatch.StartNew();
+    await using var helper = await HelperClient.StartAsync(CancellationToken.None);
+    Console.WriteLine($"helper collegato ({watch.ElapsedMilliseconds} ms)");
+    var scan = await helper.SendAsync(new HelperRequest { Operation = HelperOperation.ScanSystemJunk }, CancellationToken.None);
+    Console.WriteLine($"scansione di sistema: {scan.Ok} {Format.Bytes(scan.Report?.TotalSize ?? 0)} in {scan.Report?.AllItems.Count()} elementi");
+    var paths = scan.Report?.AllItems.Take(3).Select(i => i.Path).ToArray() ?? [];
+    var dry = await helper.SendAsync(new HelperRequest { Operation = HelperOperation.Remove, Paths = [.. paths, @"C:\Windows\System32\drivers", @"C:\Program Files\WindowsApps\x", @"C:\Users"], Mode = RemovalMode.DryRun }, CancellationToken.None);
+    foreach (var o in dry.Outcomes) Console.WriteLine($"  {o.Path}: {(o.Succeeded ? "ok " + Format.Bytes(o.Freed) : o.Error.ToString())}");
     return 0;
 }
 
