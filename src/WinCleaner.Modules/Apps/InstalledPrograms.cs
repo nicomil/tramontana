@@ -171,6 +171,8 @@ public static class InstalledPrograms
 
     internal static bool IsSharedFolder(string folder)
     {
+        // Drive roots and their first level ("D:\Games") hold more than one program.
+        if (!PathGuard.TrySplit(folder, out _, out var parts) || parts.Length < 2) return true;
         string[] shared =
         [
             KnownPaths.Windows, KnownPaths.ProgramFiles, KnownPaths.ProgramFilesX86, KnownPaths.ProgramData,

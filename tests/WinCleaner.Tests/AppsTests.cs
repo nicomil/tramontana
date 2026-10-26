@@ -145,3 +145,15 @@ public class HelperPolicyTests
         Assert.Contains("Get-FileHash", script);
     }
 }
+
+public class SharedFolderTests
+{
+    [Theory]
+    [InlineData(@"C:\", true)]
+    [InlineData(@"D:\Games", true)]
+    [InlineData(@"C:\Program Files", true)]
+    [InlineData(@"C:\Program Files\VideoLAN\VLC", false)]
+    [InlineData(@"C:\Windows\System32", true)]
+    public void SharedFoldersAreNeverAProgramFolder(string folder, bool shared) =>
+        Assert.Equal(shared, WinCleaner.Modules.Apps.InstalledPrograms.IsSharedFolder(folder));
+}

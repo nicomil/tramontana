@@ -25,9 +25,9 @@ public sealed partial class ProgramsPage : Page
 
     private async Task LoadAsync()
     {
-        Loading.IsActive = true;
+        LoadingRing.IsActive = true;
         _all = await Task.Run(() => InstalledPrograms.All());
-        Loading.IsActive = false;
+        LoadingRing.IsActive = false;
         Fill();
         // Sizes missing from the registry (Store apps, some installers) are measured in the background.
         _ = Task.Run(() =>

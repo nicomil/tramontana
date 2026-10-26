@@ -43,7 +43,7 @@
             <Border Style="{StaticResource Card}" Padding="4">
                 <Grid>
                     <ListView x:Name="List" SelectionMode="Single" SelectionChanged="List_SelectionChanged" />
-                    <ProgressRing x:Name="Loading" IsActive="True" Width="40" Height="40" />
+                    <ProgressRing x:Name="LoadingRing" IsActive="True" Width="40" Height="40" />
                 </Grid>
             </Border>
             <Border Grid.Column="1" Style="{StaticResource Card}">

@@ -1,8 +1,11 @@
 <Project>
   <ItemGroup>
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.0" />
-    <PackageVersion Include="System.Management" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <!-- Patched native SQLite (the version pulled by Microsoft.Data.Sqlite has a known advisory). -->
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
+    <PackageVersion Include="System.Management" Version="10.0.14" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageVersion Include="H.NotifyIcon.WinUI" Version="2.3.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

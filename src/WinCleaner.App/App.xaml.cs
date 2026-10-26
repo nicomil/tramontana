@@ -13,7 +13,9 @@ public partial class App : Application
         InitializeComponent();
         UnhandledException += (_, e) =>
         {
-            WinCleaner.Core.OperationLog.Standard.Write($"app\tcrash\t{e.Exception}");
+            // Logged and kept alive: an error in one screen must not close the app mid-clean.
+            WinCleaner.Core.OperationLog.Standard.Write($"app\terror\t{e.Exception}");
+            e.Handled = true;
         };
     }
 

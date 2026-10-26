@@ -70,7 +70,7 @@ public static partial class LeftoverFinder
     {
         var others = installed.Where(p => p.Id != program.Id).ToList();
         var otherNames = new HashSet<string>(others.SelectMany(CandidateNames), StringComparer.OrdinalIgnoreCase);
-        var otherLocations = others.Select(p => p.InstallLocation).OfType<string>().ToList();
+        var otherLocations = others.Select(p => p.InstallLocation).OfType<string>().Where(l => !InstalledPrograms.IsSharedFolder(l)).ToList();
         var names = CandidateNames(program);
         names.RemoveWhere(otherNames.Contains);
         var publishers = PublisherNames(program);
