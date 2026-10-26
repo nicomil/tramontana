@@ -6,6 +6,9 @@ namespace WinCleaner.App;
 
 public partial class App : Application
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr hwnd, string text, string caption, uint type);
+
     public static MainWindow? Window { get; private set; }
 
     public App()
@@ -40,7 +43,18 @@ public partial class App : Application
         main.Activated += (_, _) => Window?.DispatcherQueue.TryEnqueue(() => { Window.AppWindow.Show(); Window.Activate(); });
 
         Notifications.Register();
-        Window = new MainWindow();
+        try
+        {
+            Window = new MainWindow();
+        }
+        catch (Exception e)
+        {
+            // Never stay alive without a window: it would swallow every later launch.
+            WinCleaner.Core.OperationLog.Standard.Write($"app\tstartup\t{e}");
+            MessageBoxW(IntPtr.Zero, $"WinCleaner non riesce ad aprire la finestra:\n\n{e.Message}\n\nDettagli nel registro delle operazioni.", "WinCleaner", 0x10);
+            Exit();
+            return;
+        }
         if (!commandLine.Contains("--background")) Window.Activate();
     }
 }

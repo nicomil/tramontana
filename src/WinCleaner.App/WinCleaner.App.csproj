@@ -25,4 +25,13 @@
   <ItemGroup>
     <ProjectReference Include="..\WinCleaner.Modules\WinCleaner.Modules.csproj" />
   </ItemGroup>
+  <!-- dotnet publish of an unpackaged WinUI app leaves out the compiled XAML
+       (.xbf) and the app's resources.pri: without them no window can load. -->
+  <Target Name="PublishXamlArtifacts" AfterTargets="Publish">
+    <ItemGroup>
+      <_WcXaml Include="$(OutDir)**\*.xbf" />
+      <_WcXaml Include="$(OutDir)$(AssemblyName).pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WcXaml)" DestinationFiles="@(_WcXaml->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 </Project>
