@@ -90,7 +90,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <CheckBox IsThreeState="True" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" MinWidth="0" VerticalAlignment="Center" />
+                                <CheckBox IsThreeState="False" IsChecked="{x:Bind IsChecked, Mode=OneWay}" Click="CategoryCheck_Click" MinWidth="0" VerticalAlignment="Center" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" />

@@ -11,7 +11,15 @@ Set-Location $root
 $platform = if ($Arch -eq "arm64") { "ARM64" } else { "x64" }
 $rid = "win-$Arch"
 
-if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
+if (Test-Path $Out) {
+    # A copy started from this folder keeps its files locked: close it first.
+    $full = (Resolve-Path $Out).Path
+    Get-Process WinCleaner, wchelper -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($full, [StringComparison]::OrdinalIgnoreCase) } |
+        Stop-Process -Force
+    Start-Sleep -Milliseconds 500
+    Remove-Item -Recurse -Force $Out
+}
 dotnet publish src\WinCleaner.App -c Release -r $rid -p:Platform=$platform --self-contained -o $Out -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
 dotnet publish src\WinCleaner.Helper -c Release -r $rid -p:Platform=$platform --self-contained -p:PublishSingleFile=true -o "$Out\helper-tmp" -nologo -v q

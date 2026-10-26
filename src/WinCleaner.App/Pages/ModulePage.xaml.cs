@@ -69,6 +69,15 @@ public sealed partial class ModulePage : Page
         DispatcherQueue.TryEnqueue(() => CategoryList.SelectedItem = State.SelectedCategory);
     }
 
+    /// <summary>
+    /// Only a user click changes a category: the box shows the state one way,
+    /// so "partly selected" coming from an item never flows back as "select all".
+    /// </summary>
+    private void CategoryCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { DataContext: CategoryViewModel category }) category.Toggle();
+    }
+
     private void CategoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CategoryList.SelectedItem is CategoryViewModel category) State.SelectedCategory = category;

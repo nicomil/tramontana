@@ -76,7 +76,7 @@ public sealed class CategoryViewModel : Observable
     public long SelectedSize => Items.Where(i => i.IsChecked).Sum(i => i.Item.Size);
     public int SelectedCount => Items.Count(i => i.IsChecked);
 
-    /// <summary>Three states: all, none, some (null).</summary>
+    /// <summary>Three states for display: all, none, some (null).</summary>
     public bool? IsChecked
     {
         get
@@ -85,14 +85,16 @@ public sealed class CategoryViewModel : Observable
             int checkable = Items.Count(i => i.CanCheck);
             return n == 0 ? false : n == checkable ? true : null;
         }
-        set
-        {
-            // A click on a partly selected category selects everything.
-            bool target = value ?? true;
-            foreach (var item in Items) item.SetSilently(target);
-            ItemChanged();
-        }
     }
+
+    public void SetAll(bool value)
+    {
+        foreach (var item in Items) item.SetSilently(value);
+        ItemChanged();
+    }
+
+    /// <summary>User click: a fully selected category is cleared, otherwise everything is selected.</summary>
+    public void Toggle() => SetAll(IsChecked != true);
 
     internal void ItemChanged()
     {
@@ -248,7 +250,7 @@ public sealed class ModuleState : Observable
 
     public void SelectAll(bool value)
     {
-        foreach (var c in Categories) c.IsChecked = value;
+        foreach (var c in Categories) c.SetAll(value);
     }
 
     /// <summary>Restores the preselection of the last scan.</summary>
