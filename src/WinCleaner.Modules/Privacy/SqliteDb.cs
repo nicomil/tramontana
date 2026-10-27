@@ -28,11 +28,11 @@ public sealed class SqliteDb : IDisposable
     public static SqliteDb? OpenReadOnly(string path)
     {
         if (!File.Exists(path)) return null;
-        var normal = Open($"Data Source={path};Mode=ReadOnly;Pooling=False;Default Timeout=1");
+        var normal = Open(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false, DefaultTimeout = 1 }.ToString());
         if (normal is not null && Probe(normal)) return new SqliteDb(normal, path, readsLatest: true);
         normal?.Dispose();
         var uri = "file:///" + path.Replace('\\', '/').Replace("%", "%25").Replace("#", "%23").Replace("?", "%3F") + "?immutable=1";
-        var immutable = Open($"Data Source={uri};Mode=ReadOnly;Pooling=False");
+        var immutable = Open(new SqliteConnectionStringBuilder { DataSource = uri, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         if (immutable is not null && Probe(immutable)) return new SqliteDb(immutable, path, readsLatest: false);
         immutable?.Dispose();
         return null;
@@ -41,7 +41,7 @@ public sealed class SqliteDb : IDisposable
     public static SqliteDb? OpenReadWrite(string path)
     {
         if (!File.Exists(path)) return null;
-        var connection = Open($"Data Source={path};Mode=ReadWrite;Pooling=False;Default Timeout=2");
+        var connection = Open(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWrite, Pooling = false, DefaultTimeout = 2 }.ToString());
         return connection is null ? null : new SqliteDb(connection, path, readsLatest: true);
     }
 

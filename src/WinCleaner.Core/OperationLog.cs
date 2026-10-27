@@ -11,9 +11,10 @@ public sealed class OperationLog
 
     public OperationLog(string filePath) => FilePath = filePath;
 
-    /// <summary>%LOCALAPPDATA%\WinCleaner\Logs\operations.log</summary>
-    public static OperationLog Standard { get; } =
-        new(Path.Combine(KnownPaths.LocalAppData, "WinCleaner", "Logs", "operations.log"));
+    /// <summary><see cref="DataFolders.Logs"/>\operations.log: the user's folder in the app, the administrator-only folder in the helper.</summary>
+    public static OperationLog Standard { get; private set; } = new(Path.Combine(DataFolders.Logs, "operations.log"));
+
+    internal static void ResetStandard() => Standard = new(Path.Combine(DataFolders.Logs, "operations.log"));
 
     public void Record(RemovalMode mode, RemovalOutcome outcome)
     {

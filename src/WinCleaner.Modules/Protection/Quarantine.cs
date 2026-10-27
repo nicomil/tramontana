@@ -1,8 +1,10 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
 using WinCleaner.Core;
+using static WinCleaner.Core.Native.NativeMethods;
 
 namespace WinCleaner.Modules.Protection;
 
@@ -17,7 +19,14 @@ public sealed record QuarantineRecord(Guid Id, string Title, string OriginalPath
 /// moved through its handle (never by path), with a DACL that lets only the
 /// owner read it, the Hidden attribute, and a Zone.Identifier stream so
 /// SmartScreen would stop even a copy. The index keeps what the user needs to
-/// put things back. System items live in a ProgramData folder the helper owns.
+/// put things back.
+///
+/// Nothing in the index is trusted: an item is only ever taken from its own
+/// folder under the quarantine, put back only inside the allowed roots, and
+/// every folder on the way is opened one name at a time without following
+/// links. The system quarantine (<see cref="RequireAdminOwner"/>) also checks
+/// that the folder and the index belong to administrators, so a user-level
+/// program cannot plant a record for the elevated helper to act on.
 /// </summary>
 public sealed class Quarantine
 {
@@ -27,23 +36,38 @@ public sealed class Quarantine
     public static string SystemFolder => Path.Combine(KnownPaths.ProgramData, "WinCleaner", "Quarantine");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
+    /// <summary>The folder and the index must be owned by administrators (the helper's quarantine under ProgramData).</summary>
+    public bool RequireAdminOwner { get; init; }
+
     public Quarantine(string? folder = null, OperationLog? log = null)
     {
-        Folder = folder ?? UserFolder;
+        Folder = KnownPaths.Long(folder ?? UserFolder);
         _log = log ?? OperationLog.Standard;
     }
 
     private string Index => Path.Combine(Folder, "index.json");
 
+    /// <summary>The records whose stored folder is really a child of this quarantine; the others are ignored.</summary>
     public List<QuarantineRecord> Records()
     {
+        if (RequireAdminOwner) { SecureFolder.Verify(Folder); SecureFolder.VerifyFile(Index); }
         try
         {
-            if (File.Exists(Index)) return (JsonSerializer.Deserialize<List<QuarantineRecord>>(File.ReadAllText(Index), Json) ?? []).OrderByDescending(r => r.Date).ToList();
+            if (File.Exists(Index))
+                return (JsonSerializer.Deserialize<List<QuarantineRecord>>(File.ReadAllText(Index), Json) ?? [])
+                    .Where(IsWellFormed).OrderByDescending(r => r.Date).ToList();
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { }
         return [];
     }
+
+    /// <summary>The stored folder is <see cref="Folder"/>\&lt;id&gt; and the names are plain names.</summary>
+    internal bool IsWellFormed(QuarantineRecord record) =>
+        PathGuard.IsValidPath(record.StoredFolder)
+        && string.Equals(KnownPaths.Long(record.StoredFolder), Path.Combine(Folder, record.Id.ToString("N")), StringComparison.OrdinalIgnoreCase)
+        && PathGuard.IsValidName(record.StoredName)
+        && PathGuard.IsValidPath(record.OriginalPath)
+        && PathGuard.IsValidName(Path.GetFileName(record.OriginalPath));
 
     private void Save(List<QuarantineRecord> records)
     {
@@ -54,48 +78,80 @@ public sealed class Quarantine
     public void Add(QuarantineRecord record) => Save([.. Records().Where(r => r.Id != record.Id), record]);
     public void Forget(QuarantineRecord record) => Save([.. Records().Where(r => r.Id != record.Id)]);
 
+    private SafeFileHandle OpenRoot(uint access = PinnedFileSystem.DirectoryReadAccess)
+    {
+        if (RequireAdminOwner) SecureFolder.Verify(Folder);
+        return PinnedFileSystem.OpenDirectoryPath(Folder, access, followReparsePoints: false);
+    }
+
     /// <summary>Moves a file or folder inside one of <paramref name="allowedRoots"/> into the quarantine and locks it.</summary>
     public QuarantineRecord Put(string path, string title, string reason, IEnumerable<string> allowedRoots, bool isSystem = false)
     {
         var id = Guid.NewGuid();
-        string destination = Path.Combine(Folder, id.ToString("N"));
-        Directory.CreateDirectory(destination);
+        string idName = id.ToString("N");
+        string destination = Path.Combine(Folder, idName);
+        if (!Directory.Exists(Folder)) Directory.CreateDirectory(Folder);
+        using var root = OpenRoot();
+        // Created relative to the open root (never by path) so a junction swapped in cannot redirect it.
+        using var target = PinnedFileSystem.OpenRelative(root, idName, PinnedFileSystem.DirectoryReadAccess | DELETE, FILE_DIRECTORY_FILE, disposition: FILE_CREATE);
         var remover = new SafeRemover(allowedRoots, RemovalMode.Delete, _log, SafeRemover.DefaultProtectedPaths());
-        using var target = PinnedFileSystem.OpenDirectoryPath(destination);
         string name = Path.GetFileName(path);
         var outcome = remover.MoveInto(path, target, name);
         if (outcome.Error is { } error)
         {
-            try { Directory.Delete(destination); } catch (IOException) { }
+            try { PinnedFileSystem.Delete(target); } catch (IOException) { }
             throw new InvalidOperationException($"{path}: {error}{(outcome.Message is null ? "" : " (" + outcome.Message + ")")}");
         }
-        Lock(Path.Combine(destination, name));
+        Lock(target, name);
         var record = new QuarantineRecord(id, title, KnownPaths.Long(path), reason, DateTime.Now, destination, name, isSystem);
         Add(record);
         _log?.Write($"quarantine\tput\t{record.OriginalPath}\t{record.StoredPath}");
         return record;
     }
 
-    /// <summary>Puts a user item back where it was. Fails if something is there now.</summary>
-    public void Restore(QuarantineRecord record)
+    /// <summary>
+    /// Puts an item back where it was, provided the place is inside one of
+    /// <paramref name="allowedRoots"/>. Missing folders on the way are created
+    /// one name at a time; fails if something is there now.
+    /// </summary>
+    public void Restore(QuarantineRecord record, IEnumerable<string> allowedRoots)
     {
-        string parent = Path.GetDirectoryName(record.OriginalPath) ?? throw new InvalidOperationException("percorso non valido");
-        Directory.CreateDirectory(parent);
-        if (File.Exists(record.OriginalPath) || Directory.Exists(record.OriginalPath)) throw new InvalidOperationException($"{record.OriginalPath}: esiste già qualcosa con questo nome");
-        Unlock(record.StoredPath);
-        var remover = new SafeRemover([record.StoredFolder], RemovalMode.Delete, _log, []);
-        using var target = PinnedFileSystem.OpenDirectoryPath(parent);
-        var outcome = remover.MoveInto(record.StoredPath, target, Path.GetFileName(record.OriginalPath));
+        if (!IsWellFormed(record)) throw new InvalidOperationException("elemento della quarantena non valido");
+        string original = KnownPaths.Long(record.OriginalPath);
+        string parent = Path.GetDirectoryName(original) ?? throw new InvalidOperationException("percorso non valido");
+        string name = Path.GetFileName(original);
+        var roots = allowedRoots.Where(PathGuard.IsValidPath).Select(KnownPaths.Long).ToList();
+        string allowedRoot = roots.Where(r => PathGuard.IsStrictlyInside(original, r)).OrderByDescending(r => r.Length).FirstOrDefault()
+            ?? throw new InvalidOperationException($"{original}: fuori dalle cartelle in cui la quarantena può rimettere i file");
+        if (SafeRemover.DefaultProtectedPaths().Any(p => PathGuard.IsSameOrInside(original, KnownPaths.Long(p))))
+            throw new InvalidOperationException($"{original}: dentro i dati di WinCleaner");
+
+        using var root = OpenRoot();
+        Unlock(root, record.Id.ToString("N"));
+        using var allowedHandle = PinnedFileSystem.OpenDirectoryPath(allowedRoot);
+        string[] components = PathGuard.IsStrictlyInside(parent, allowedRoot) ? PathGuard.RelativeComponents(parent, allowedRoot) : [];
+        using var target = PinnedFileSystem.OpenPathCreating(allowedHandle, components);
+        try
+        {
+            using var existing = PinnedFileSystem.OpenRelative(target, name, FILE_READ_ATTRIBUTES);
+            throw new InvalidOperationException($"{original}: esiste già qualcosa con questo nome");
+        }
+        catch (FileSystemException e) when (e.IsNotFound) { }
+
+        var remover = new SafeRemover([Folder], RemovalMode.Delete, _log, []);
+        var outcome = remover.MoveInto(record.StoredPath, target, name);
         if (outcome.Error is { } error) throw new InvalidOperationException($"{record.StoredPath}: {error}{(outcome.Message is null ? "" : " (" + outcome.Message + ")")}");
-        try { Directory.Delete(record.StoredFolder); } catch (IOException) { }
+        try { using var folder = PinnedFileSystem.OpenRelative(root, record.Id.ToString("N"), DELETE | FILE_READ_ATTRIBUTES, FILE_DIRECTORY_FILE); PinnedFileSystem.Delete(folder); }
+        catch (IOException) { }
         Forget(record);
-        _log?.Write($"quarantine\trestore\t{record.OriginalPath}");
+        _log?.Write($"quarantine\trestore\t{original}");
     }
 
     /// <summary>Deletes an item for good.</summary>
     public void Delete(QuarantineRecord record)
     {
-        Unlock(record.StoredPath);
+        if (!IsWellFormed(record)) throw new InvalidOperationException("elemento della quarantena non valido");
+        using (var root = OpenRoot()) Unlock(root, record.Id.ToString("N"));
         var remover = new SafeRemover([Folder], RemovalMode.Delete, _log, []);
         var outcome = remover.Remove([record.StoredFolder]).First();
         if (outcome.Error is { } error && error != RemovalError.NotFound) throw new InvalidOperationException($"{record.StoredFolder}: {error}");
@@ -103,89 +159,132 @@ public sealed class Quarantine
         _log?.Write($"quarantine\tdelete\t{record.OriginalPath}");
     }
 
-    /// <summary>Owner may read, nobody may execute; hidden; marked as downloaded from the internet.</summary>
-    public static void Lock(string path)
+    // ---- Locking, through handles ----
+
+    private const uint LockAccess = READ_CONTROL | WRITE_DAC | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES;
+    private static readonly byte[] ZoneTransfer = Encoding.ASCII.GetBytes("[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=about:internet\r\n");
+
+    /// <summary>Who may still read a locked item: the owner and, for an administrator, the Administrators group.</summary>
+    private static List<SecurityIdentifier> Readers()
     {
-        var owner = WindowsIdentity.GetCurrent().User!;
-        bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
-        var rules = new List<FileSystemAccessRule> { new(owner, FileSystemRights.Read | FileSystemRights.Delete | FileSystemRights.ChangePermissions, AccessControlType.Allow) };
-        if (admin) rules.Add(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.Read | FileSystemRights.Delete | FileSystemRights.ChangePermissions, AccessControlType.Allow));
-        // Children before parents: a folder locked first would block the work on its files.
-        foreach (var file in Enumerable.Reverse(Walk(path)))
-        {
-            try
-            {
-                if (Directory.Exists(file))
-                {
-                    var security = new DirectorySecurity();
-                    security.SetAccessRuleProtection(true, false);
-                    foreach (var rule in rules) security.AddAccessRule(new FileSystemAccessRule(rule.IdentityReference, rule.FileSystemRights, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
-                    new DirectoryInfo(file).SetAccessControl(security);
-                }
-                else
-                {
-                    // The stream before the Hidden attribute (a hidden file refuses new streams), both before the read-only DACL.
-                    File.SetAttributes(file, File.GetAttributes(file) & ~(FileAttributes.ReadOnly | FileAttributes.Hidden));
-                    try
-                    {
-                        using var stream = new FileStream(file + ":Zone.Identifier", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
-                        stream.SetLength(0);
-                        using var writer = new StreamWriter(stream);
-                        writer.Write("[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=about:internet\r\n");
-                    }
-                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-                    File.SetAttributes(file, File.GetAttributes(file) | FileAttributes.Hidden);
-                    var security = new FileSecurity();
-                    security.SetAccessRuleProtection(true, false);
-                    foreach (var rule in rules) security.AddAccessRule(rule);
-                    new FileInfo(file).SetAccessControl(security);
-                }
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        }
+        var list = new List<SecurityIdentifier> { WindowsIdentity.GetCurrent().User! };
+        if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+            list.Add(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        return list;
     }
 
-    public static void Unlock(string path)
+    private static FileSystemSecurity Dacl(bool directory, FileSystemRights rights, bool inherit)
     {
-        var owner = WindowsIdentity.GetCurrent().User!;
-        // Parents first: the folder must open again before its files can be touched.
-        foreach (var file in Walk(path))
-        {
-            try
-            {
-                if (Directory.Exists(file))
-                {
-                    var security = new DirectorySecurity();
-                    security.SetAccessRuleProtection(true, false);
-                    security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-                    new DirectoryInfo(file).SetAccessControl(security);
-                }
-                else
-                {
-                    var security = new FileSecurity();
-                    security.SetAccessRuleProtection(true, false);
-                    security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
-                    new FileInfo(file).SetAccessControl(security);
-                    File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.Hidden);
-                    try { File.Delete(file + ":Zone.Identifier"); } catch (IOException) { }
-                }
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        }
+        FileSystemSecurity security = directory ? new DirectorySecurity() : new FileSecurity();
+        security.SetAccessRuleProtection(true, false);
+        var flags = directory && inherit ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None;
+        foreach (var sid in Readers())
+            security.AddAccessRule(new FileSystemAccessRule(sid, rights, flags, PropagationFlags.None, AccessControlType.Allow));
+        return security;
     }
 
-    /// <summary>The item and everything below it, parents first; links are listed, never followed.</summary>
-    private static List<string> Walk(string path)
+    /// <summary>Read, delete and change permissions, plus Synchronize so the handle-based code can open it again; never execute or write.</summary>
+    private static readonly FileSystemRights LockedRights = FileSystemRights.Read | FileSystemRights.Delete | FileSystemRights.ChangePermissions | FileSystemRights.Synchronize;
+
+    /// <summary>Locks the entry <paramref name="name"/> of an open folder: children before parents.</summary>
+    internal static void Lock(SafeFileHandle parent, string name)
     {
-        var list = new List<string> { path };
-        if (!Directory.Exists(path) || new DirectoryInfo(path).Attributes.HasFlag(FileAttributes.ReparsePoint)) return list;
         try
         {
-            foreach (var entry in Directory.EnumerateFileSystemEntries(path, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint }))
-                list.Add(entry);
+            using var item = PinnedFileSystem.OpenRelative(parent, name, LockAccess);
+            LockTree(item, 0);
         }
-        catch (IOException) { }
-        return list;
+        catch (FileSystemException) { }
+    }
+
+    private static void LockTree(SafeFileHandle item, int depth)
+    {
+        HandleInfo info;
+        try { info = PinnedFileSystem.GetInfo(item); } catch (FileSystemException) { return; }
+        if (info.IsDirectory && !info.IsReparsePoint && depth < 400)
+        {
+            try
+            {
+                using var list = PinnedFileSystem.ReOpen(item, PinnedFileSystem.DirectoryReadAccess);
+                foreach (var entry in PinnedFileSystem.Enumerate(list))
+                {
+                    try
+                    {
+                        using var child = PinnedFileSystem.OpenRelative(list, entry.Name, LockAccess, entry.IsDirectory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE);
+                        LockTree(child, depth + 1);
+                    }
+                    catch (FileSystemException) { }
+                }
+            }
+            catch (FileSystemException) { }
+        }
+        else if (!info.IsDirectory && !info.IsReparsePoint)
+        {
+            // The stream before the Hidden attribute (a hidden file refuses to be overwritten), both before the read-only DACL.
+            try
+            {
+                PinnedFileSystem.SetAttributes(item, info.Attributes & ~(FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN));
+                try
+                {
+                    using var zone = PinnedFileSystem.OpenStream(item, "Zone.Identifier", FILE_WRITE_DATA, FILE_OVERWRITE_IF);
+                    RandomAccess.Write(zone, ZoneTransfer, 0);
+                }
+                catch (FileSystemException) { }
+                PinnedFileSystem.SetAttributes(item, (info.Attributes & ~FILE_ATTRIBUTE_READONLY) | FILE_ATTRIBUTE_HIDDEN);
+            }
+            catch (FileSystemException) { }
+        }
+        try { PinnedFileSystem.SetDacl(item, Dacl(info.IsDirectory, LockedRights, inherit: false)); } catch (FileSystemException) { }
+    }
+
+    /// <summary>Unlocks the entry <paramref name="name"/> of an open folder: parents first, so their children can be opened again.</summary>
+    internal static void Unlock(SafeFileHandle parent, string name)
+    {
+        try
+        {
+            using var item = PinnedFileSystem.OpenRelative(parent, name, READ_CONTROL | WRITE_DAC | FILE_READ_ATTRIBUTES);
+            UnlockTree(item, 0);
+        }
+        catch (FileSystemException) { }
+    }
+
+    private static void UnlockTree(SafeFileHandle item, int depth)
+    {
+        HandleInfo info;
+        try { info = PinnedFileSystem.GetInfo(item); } catch (FileSystemException) { return; }
+        try { PinnedFileSystem.SetDacl(item, Dacl(info.IsDirectory, FileSystemRights.FullControl, inherit: true)); } catch (FileSystemException) { }
+        if (info.IsDirectory && !info.IsReparsePoint && depth < 400)
+        {
+            try
+            {
+                using var list = PinnedFileSystem.ReOpen(item, PinnedFileSystem.DirectoryReadAccess);
+                foreach (var entry in PinnedFileSystem.Enumerate(list))
+                {
+                    try
+                    {
+                        using var child = PinnedFileSystem.OpenRelative(list, entry.Name, READ_CONTROL | WRITE_DAC | FILE_READ_ATTRIBUTES, entry.IsDirectory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE);
+                        UnlockTree(child, depth + 1);
+                    }
+                    catch (FileSystemException) { }
+                }
+            }
+            catch (FileSystemException) { }
+        }
+        else if (!info.IsDirectory && !info.IsReparsePoint)
+        {
+            try
+            {
+                using var writable = PinnedFileSystem.ReOpen(item, FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES);
+                PinnedFileSystem.SetAttributes(writable, info.Attributes & ~FILE_ATTRIBUTE_HIDDEN);
+                try
+                {
+                    using var zone = PinnedFileSystem.OpenStream(writable, "Zone.Identifier", DELETE, FILE_OPEN);
+                    PinnedFileSystem.Delete(zone);
+                }
+                catch (FileSystemException) { }
+            }
+            catch (FileSystemException) { }
+        }
     }
 
     /// <summary>The user roots a quarantine may take from: the profile, including its hidden folders, and ProgramData's program folders.</summary>

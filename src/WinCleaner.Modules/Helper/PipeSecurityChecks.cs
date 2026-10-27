@@ -1,7 +1,6 @@
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace WinCleaner.Modules.Helper;
 
@@ -54,9 +53,4 @@ public static unsafe partial class PipeSecurityChecks
         using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         return Convert.ToHexString(SHA256.HashData(stream));
     }
-
-    /// <summary>Single-quoted PowerShell literal.</summary>
-    public static string PsQuote(string s) => "'" + s.Replace("'", "''") + "'";
-
-    public static string EncodePowerShell(string script) => Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
 }

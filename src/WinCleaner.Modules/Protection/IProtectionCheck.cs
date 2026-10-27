@@ -166,6 +166,7 @@ public sealed class SystemCommands : ICommandRunner
             if (!File.Exists(path)) return "";
             var info = new ProcessStartInfo(path) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (var a in args) info.ArgumentList.Add(a);
+            ProcessEnvironment.Sanitize(info);
             using var p = Process.Start(info)!;
             var output = p.StandardOutput.ReadToEndAsync();
             var error = p.StandardError.ReadToEndAsync();

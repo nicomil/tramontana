@@ -12,16 +12,13 @@ namespace WinCleaner.Modules.Helper;
 /// The app's side of the elevated helper. One administrator prompt starts
 /// the helper, which then serves requests until the app closes.
 ///
-/// The helper (wchelper.exe) is started directly when the app is installed
-/// in Program Files, where only administrators can write. Otherwise an
-/// elevated Windows PowerShell first copies it into a new folder under
-/// C:\Windows\Temp that only administrators and SYSTEM can open, checks its
-/// SHA-256 against the value computed by the app, and only then runs that
-/// copy, so a file swapped in the app folder while the prompt is open is
-/// never run as administrator.
-///
-/// The pipe accepts only the current user, one connection, and the app
-/// checks that the connected process runs an image with the same SHA-256.
+/// The helper (wchelper.exe) is started from the app's folder. Installed in
+/// Program Files only administrators can swap it; anywhere else the app logs
+/// that it is running from an unprotected folder (development). The pipe
+/// accepts only the current user and one connection, the app checks that the
+/// connected process runs an image with the same SHA-256 it computed, and the
+/// helper in turn checks that the pipe belongs to WinCleaner.exe in its own
+/// folder (see <see cref="HelperIdentity"/>).
 /// </summary>
 public sealed class HelperClient : IAsyncDisposable
 {
@@ -53,6 +50,8 @@ public sealed class HelperClient : IAsyncDisposable
         if (!File.Exists(helper)) throw new FileNotFoundException("wchelper.exe non trovato accanto all'app", helper);
         string hash = PipeSecurityChecks.Sha256(helper);
         string pipeName = "WinCleaner-" + Guid.NewGuid().ToString("N");
+        if (!IsInstalledLocation(Path.GetDirectoryName(helper)!))
+            OperationLog.Standard.Write($"helper\tavvio da cartella non protetta (sviluppo)\t{helper}");
 
         var security = new PipeSecurity();
         var user = WindowsIdentity.GetCurrent().User!;
@@ -60,15 +59,12 @@ public sealed class HelperClient : IAsyncDisposable
         var pipe = NamedPipeServerStreamAcl.Create(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.FirstPipeInstance, 1 << 16, 1 << 16, security);
 
-        string args = $"--pipe {pipeName} --parent {Environment.ProcessId}";
-        var start = IsInstalledLocation(Path.GetDirectoryName(helper)!)
-            ? new ProcessStartInfo(helper, args)
-            : new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
-                "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand " +
-                PipeSecurityChecks.EncodePowerShell(BootstrapScript(helper, hash, args)));
-        start.UseShellExecute = true;
-        start.Verb = "runas";
-        start.WindowStyle = ProcessWindowStyle.Hidden;
+        var start = new ProcessStartInfo(helper, $"--pipe {pipeName} --parent {Environment.ProcessId}")
+        {
+            UseShellExecute = true,
+            Verb = "runas",
+            WindowStyle = ProcessWindowStyle.Hidden,
+        };
         try
         {
             using var _ = Process.Start(start);
@@ -101,33 +97,16 @@ public sealed class HelperClient : IAsyncDisposable
         }
 
         var client = new HelperClient(pipe);
-        var ping = await client.SendAsync(new HelperRequest { Operation = HelperOperation.Ping }, cancellation);
+        HelperResponse ping;
+        try { ping = await client.SendAsync(new HelperRequest { Operation = HelperOperation.Ping }, cancellation); }
+        catch (IOException)
+        {
+            await client.DisposeAsync();
+            throw new UnauthorizedAccessException("L'helper ha rifiutato il collegamento: WinCleaner deve essere avviato dalla sua cartella di installazione");
+        }
         if (!ping.Ok) throw new IOException("L'helper non risponde");
         return client;
     }
-
-    /// <summary>Elevated Windows PowerShell: copy into an admin-only folder, verify the hash, run, clean up.</summary>
-    internal static string BootstrapScript(string helper, string hash, string args) => $$"""
-        $ErrorActionPreference = 'Stop'
-        $dir = Join-Path $env:SystemRoot ('Temp\WinCleaner-' + [guid]::NewGuid().ToString('N'))
-        $sec = New-Object System.Security.AccessControl.DirectorySecurity
-        $sec.SetAccessRuleProtection($true, $false)
-        foreach ($sid in 'S-1-5-32-544', 'S-1-5-18') {
-            $id = New-Object System.Security.Principal.SecurityIdentifier($sid)
-            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($id, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
-            $sec.AddAccessRule($rule)
-        }
-        [System.IO.Directory]::CreateDirectory($dir, $sec) | Out-Null
-        try {
-            $dst = Join-Path $dir 'wchelper.exe'
-            [System.IO.File]::Copy({{PipeSecurityChecks.PsQuote(helper)}}, $dst)
-            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $dst).Hash -ne {{PipeSecurityChecks.PsQuote(hash)}}) { exit 3 }
-            $p = Start-Process -FilePath $dst -ArgumentList {{PipeSecurityChecks.PsQuote(args)}} -PassThru -Wait -WindowStyle Hidden
-            exit $p.ExitCode
-        } finally {
-            Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        """;
 
     public async Task<HelperResponse> SendAsync(HelperRequest request, CancellationToken cancellation)
     {

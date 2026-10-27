@@ -132,12 +132,43 @@ public sealed class SignatureScanCheck(RuleStore? store = null, ScanCache? cache
     private readonly RuleStore _store = store ?? new RuleStore();
     private readonly ScanCache? _cache = cache ?? new ScanCache();
 
+    /// <summary>The pins to check the files against; tests pass their own, the app reads ProgramData\WinCleaner\Pins.</summary>
+    public IReadOnlyDictionary<string, string>? Pins { get; init; } = RulePins.Load();
+
     public IEnumerable<Finding> Run(CheckContext context)
     {
-        var files = _store.Files();
+        var all = _store.Files();
+        if (all.Count == 0) yield break;
+        // Files that changed after the user confirmed them (or were never confirmed) come from a folder any program
+        // with the user's rights can write: a changed yara64.exe is never run, a changed rule file is skipped.
+        var files = new List<RuleFile>();
+        bool unconfirmed = false;
+        foreach (var file in all)
+        {
+            switch (RulePins.Check(Pins, file))
+            {
+                case RulePins.Verdict.Confirmed: files.Add(file); break;
+                case RulePins.Verdict.Changed:
+                    yield return new Finding($"rules-changed|{file.Name}", Categories.Signatures, $"{file.Name} è cambiato dopo la conferma",
+                        file.Name.Equals("yara64.exe", StringComparison.OrdinalIgnoreCase)
+                            ? "L'eseguibile YARA nella cartella delle regole non è più quello confermato come amministratore: non viene eseguito. Se l'hai aggiornato tu, confermalo di nuovo dalle Impostazioni; altrimenti qualcosa lo ha sostituito."
+                            : "Il file delle regole non è più quello confermato: viene ignorato finché non lo confermi di nuovo dalle Impostazioni.",
+                        file.Name.Equals("yara64.exe", StringComparison.OrdinalIgnoreCase) ? Severity.Danger : Severity.Warning)
+                    { Path = file.Path, Evidence = [$"SHA-256 attuale: {file.Sha256}", $"SHA-256 confermato: {Pins?.GetValueOrDefault(file.Name) ?? "?"}"] };
+                    break;
+                default:
+                    unconfirmed = true;
+                    if (!file.Name.Equals("yara64.exe", StringComparison.OrdinalIgnoreCase)) files.Add(file);
+                    break;
+            }
+        }
+        if (unconfirmed)
+            yield return new Finding("rules-unconfirmed", Categories.Signatures, "File delle firme non confermati",
+                "Regole o yara64.exe aggiunti ma non confermati come amministratore: un programma con i tuoi diritti potrebbe cambiarli. yara64.exe non viene eseguito finché non lo confermi dalle Impostazioni.", Severity.Warning)
+            { Path = _store.Folder };
         var hashes = KnownHashes.Load(files.Where(f => f.IsHashList));
         var drivers = LolDrivers.Load(files.Where(f => f.IsDriverList));
-        string? yara = _store.YaraExecutable();
+        string? yara = files.Any(f => f.Name.Equals("yara64.exe", StringComparison.OrdinalIgnoreCase)) ? _store.YaraExecutable() : null;
         var ruleFiles = yara is null ? [] : new List<string> { _store.BundledRules() }.Concat(files.Where(f => f.IsYaraRules).Select(f => f.Path)).ToList();
         if (hashes.Count == 0 && drivers.Count == 0 && yara is null) yield break;
 

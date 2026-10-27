@@ -220,7 +220,7 @@ public static class StartupManager
                 if (key.GetValue("ImagePath") is not string image) continue;
                 var exe = ExecutableOf(image);
                 if (exe is null) continue;
-                if (PathGuard.IsStrictlyInside(exe, KnownPaths.Windows)) continue;
+                // Judged by signature, not by folder: Windows\Temp and a few other corners of the Windows folder are writable by users.
                 var signature = File.Exists(exe) ? Signatures.Check(exe) : null;
                 if (signature?.IsMicrosoft == true) continue;
                 string display = key.GetValue("DisplayName") as string ?? name;
@@ -307,7 +307,7 @@ public static class StartupManager
         }
         if (item.Kind == StartupKind.StartupFolder && item.FilePath is { } file)
         {
-            var remover = new SafeRemover([Path.GetDirectoryName(file)!], RemovalMode.Recycle, OperationLog.Standard);
+            var remover = new SafeRemover([KnownPaths.Startup, KnownPaths.CommonStartup], RemovalMode.Recycle, OperationLog.Standard);
             return remover.Remove([file])[0];
         }
         throw new InvalidOperationException("Use the task or service actions");

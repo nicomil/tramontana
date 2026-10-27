@@ -42,6 +42,8 @@ public enum HelperOperation
     RemoveWmiSubscription,
     /// <summary>Turn Defender's real-time protection back on.</summary>
     EnableDefenderRealtime,
+    /// <summary>Record the SHA-256 of the user's rule files and yara64.exe in the administrator-only pins folder.</summary>
+    PinRules,
 }
 
 public sealed record HelperRequest

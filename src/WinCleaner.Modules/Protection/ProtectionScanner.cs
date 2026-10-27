@@ -28,7 +28,9 @@ public static class ProtectionScanner
         };
         var findings = Run(context, DefaultChecks());
         findings = ProtectionBaseline.Standard.Apply(findings, context.Now);
-        if (ignored is { Count: > 0 }) findings.RemoveAll(f => ignored.Contains(f.Id));
+        // An ignored id hides warnings and information, never a danger: the ignore list lives in the
+        // user's profile, where a program with the user's rights could add its own id.
+        if (ignored is { Count: > 0 }) findings.RemoveAll(f => f.Severity < Severity.Danger && ignored.Contains(f.Id));
         return findings;
     }
 

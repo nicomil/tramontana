@@ -14,6 +14,7 @@ internal static unsafe partial class NativeMethods
     // Access rights
     public const uint DELETE = 0x0001_0000;
     public const uint READ_CONTROL = 0x0002_0000;
+    public const uint WRITE_DAC = 0x0004_0000;
     public const uint SYNCHRONIZE = 0x0010_0000;
     public const uint FILE_LIST_DIRECTORY = 0x0001;
     public const uint FILE_READ_DATA = 0x0001;
@@ -33,6 +34,8 @@ internal static unsafe partial class NativeMethods
     // NtCreateFile dispositions and options
     public const uint FILE_OPEN = 1;
     public const uint FILE_CREATE = 2;
+    public const uint FILE_OPEN_IF = 3;
+    public const uint FILE_OVERWRITE_IF = 5;
     public const uint FILE_DIRECTORY_FILE = 0x0000_0001;
     public const uint FILE_SYNCHRONOUS_IO_NONALERT = 0x0000_0020;
     public const uint FILE_NON_DIRECTORY_FILE = 0x0000_0040;
@@ -59,6 +62,7 @@ internal static unsafe partial class NativeMethods
     public const uint FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x0040_0000;
 
     // NT information classes
+    public const int FileBasicInformation = 4;
     public const int FileRenameInformationEx = 65;
     public const int FileDispositionInformation = 13;
     public const int FileDispositionInformationEx = 64;
@@ -93,6 +97,9 @@ internal static unsafe partial class NativeMethods
 
     public const uint SE_FILE_OBJECT = 1;
     public const uint OWNER_SECURITY_INFORMATION = 0x1;
+    public const uint DACL_SECURITY_INFORMATION = 0x4;
+    public const uint PROTECTED_DACL_SECURITY_INFORMATION = 0x8000_0000;
+    public const uint FILE_ATTRIBUTE_NORMAL = 0x80;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct UNICODE_STRING
@@ -188,6 +195,11 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport("kernel32.dll")]
     public static partial IntPtr LocalFree(IntPtr mem);
+
+    /// <summary>Sets the security of an open handle (files included): the DACL goes to the object itself, never through a path.</summary>
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetKernelObjectSecurity(SafeFileHandle handle, uint securityInformation, byte[] securityDescriptor);
 
     [LibraryImport("sfc.dll", StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]

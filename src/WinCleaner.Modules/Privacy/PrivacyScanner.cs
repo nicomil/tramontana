@@ -178,7 +178,7 @@ public static class PrivacyScanner
     }
 
     /// <summary>Saved Wi‑Fi profiles, from "netsh wlan export" (XML, any display language).</summary>
-    private static IEnumerable<PrivacyItem> WiFiProfiles()
+    public static IEnumerable<PrivacyItem> WiFiProfiles()
     {
         string folder = Path.Combine(Path.GetTempPath(), "wincleaner-wlan-" + Guid.NewGuid().ToString("N"));
         var names = new List<string>();
@@ -188,6 +188,7 @@ public static class PrivacyScanner
             var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "netsh.exe"))
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (var a in new[] { "wlan", "export", "profile", $"folder={folder}" }) info.ArgumentList.Add(a);
+            ProcessEnvironment.Sanitize(info);
             using (var p = Process.Start(info)!) { p.StandardOutput.ReadToEnd(); p.WaitForExit(15_000); }
             foreach (var file in Directory.GetFiles(folder, "*.xml"))
             {

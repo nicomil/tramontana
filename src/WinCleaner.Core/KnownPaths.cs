@@ -15,10 +15,12 @@ public static partial class KnownPaths
     public static string LocalAppDataLow => Path.Combine(UserProfile, "AppData", "LocalLow");
     public static string ProgramData => Long(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));
     public static string Windows => Long(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-    public static string SystemDrive => (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:").TrimEnd('\\') + @"\";
+    /// <summary>The drive Windows is on, taken from the Windows folder (not from %SystemDrive%, which a user can override).</summary>
+    public static string SystemDrive => Path.GetPathRoot(Windows) ?? @"C:\";
     public static string ProgramFiles => Long(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
     public static string ProgramFilesX86 => Long(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86));
-    public static string Public => Long(Environment.GetEnvironmentVariable("PUBLIC") ?? @"C:\Users\Public");
+    /// <summary>The Public profile from the shell (FOLDERID_Public), not from %PUBLIC%, which a user can override.</summary>
+    public static string Public => Long(GetKnownFolder(new Guid("DFDF76A2-C82A-4D63-906A-5644AC457385")) ?? Path.Combine(SystemDrive, "Users", "Public"));
     public static string Downloads => Long(GetKnownFolder(new Guid("374DE290-123F-4565-9164-39C4925E467B")) ?? Path.Combine(UserProfile, "Downloads"));
     public static string Desktop => Long(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
     public static string Documents => Long(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));

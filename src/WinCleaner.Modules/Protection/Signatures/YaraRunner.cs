@@ -85,6 +85,7 @@ public static class YaraRunner
     {
         var info = new ProcessStartInfo(yara) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args) info.ArgumentList.Add(a);
+        WinCleaner.Core.ProcessEnvironment.Sanitize(info);
         using var p = Process.Start(info)!;
         var output = p.StandardOutput.ReadToEndAsync();
         var error = p.StandardError.ReadToEndAsync();

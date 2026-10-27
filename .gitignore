@@ -5,3 +5,4 @@ artifacts/
 *.user
 .DS_Store
 TestResults/
+!packages.lock.json

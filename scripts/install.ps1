@@ -2,7 +2,7 @@
 # can change it there, so the helper runs directly), adds a Start menu shortcut
 # and an entry in Settings > Apps.
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 [-Source artifacts\WinCleaner-x64]
-param([string]$Source)
+param([string]$Source, [switch]$AllowUnsigned)
 # In a release package the app sits in .\app next to this script; in the repository, in artifacts\.
 if (-not $Source) {
     $Source = if (Test-Path (Join-Path $PSScriptRoot "app\WinCleaner.exe")) { Join-Path $PSScriptRoot "app" }
@@ -13,12 +13,28 @@ $ErrorActionPreference = "Stop"
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Source `"$((Resolve-Path $Source).Path)`""
+    $unsigned = if ($AllowUnsigned) { " -AllowUnsigned" } else { "" }
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Source `"$((Resolve-Path $Source).Path)`"$unsigned"
     exit
 }
 
 $target = Join-Path $env:ProgramFiles "WinCleaner"
 if (-not (Test-Path (Join-Path $Source "WinCleaner.exe"))) { throw "WinCleaner.exe non trovato in ${Source}: esegui prima scripts\publish.ps1" }
+
+# Nothing altered gets copied into Program Files: the app's binaries must carry intact signatures from one and the same publisher.
+$own = @((Join-Path $Source "WinCleaner.exe"), (Join-Path $Source "wchelper.exe")) + (Get-ChildItem $Source -Filter "WinCleaner*.dll" | ForEach-Object FullName)
+$signers = @()
+foreach ($file in $own) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $file
+    if ($sig.Status -eq "HashMismatch") { throw "$file è stato modificato dopo la firma: installazione annullata" }
+    if ($sig.Status -eq "NotSigned") {
+        if (-not $AllowUnsigned) { throw "$file non è firmato. Pubblica con scripts\publish.ps1 (firma automatica) oppure usa -AllowUnsigned per una build di prova" }
+        Write-Warning "$file non è firmato (build di prova)"
+    }
+    elseif (-not $sig.SignerCertificate) { throw "$file ha una firma illeggibile ($($sig.Status)): installazione annullata" }
+    else { $signers += $sig.SignerCertificate.Thumbprint }
+}
+if (($signers | Sort-Object -Unique).Count -gt 1) { throw "I file sono firmati da certificati diversi: installazione annullata" }
 Get-Process WinCleaner -ErrorAction SilentlyContinue | Stop-Process -Force
 if (Test-Path $target) { Remove-Item -Recurse -Force $target }
 Copy-Item -Recurse $Source $target

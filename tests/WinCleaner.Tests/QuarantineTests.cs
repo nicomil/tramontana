@@ -32,10 +32,14 @@ public class QuarantineTests
 
         // Something else took the place: restore refuses.
         Directory.CreateDirectory(evilDir);
-        Assert.Throws<InvalidOperationException>(() => quarantine.Restore(record));
+        Assert.Throws<InvalidOperationException>(() => quarantine.Restore(record, [root]));
         Directory.Delete(evilDir);
 
-        quarantine.Restore(record);
+        // Outside the allowed roots: refused before anything moves.
+        Assert.Throws<InvalidOperationException>(() => quarantine.Restore(record, [temp.Sub("elsewhere")]));
+        Assert.True(Directory.Exists(record.StoredPath));
+
+        quarantine.Restore(record, [root]);
         Assert.True(File.Exists(agent));
         Assert.False(File.GetAttributes(agent).HasFlag(FileAttributes.Hidden));
         Assert.False(File.Exists(agent + ":Zone.Identifier"));

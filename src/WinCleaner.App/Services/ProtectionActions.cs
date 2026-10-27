@@ -165,6 +165,15 @@ public static class ProtectionActions
         if (!response.Ok) throw new InvalidOperationException(response.Error);
     }
 
+    /// <summary>Confirms the rule files as administrator: their hashes go where a user-level program cannot change them.</summary>
+    public static async Task<int> PinRulesAsync()
+    {
+        var helper = await S.EnsureHelperAsync();
+        var response = await helper.SendAsync(new HelperRequest { Operation = HelperOperation.PinRules }, CancellationToken.None);
+        if (!response.Ok) throw new InvalidOperationException(response.Error);
+        return int.TryParse(response.Text, out var n) ? n : 0;
+    }
+
     public static async Task EnableDefenderRealtimeAsync()
     {
         var helper = await S.EnsureHelperAsync();
@@ -176,7 +185,7 @@ public static class ProtectionActions
 
     public static async Task RestoreAsync(QuarantineRecord record)
     {
-        if (!record.IsSystem) { await Task.Run(() => new Quarantine().Restore(record)); return; }
+        if (!record.IsSystem) { await Task.Run(() => new Quarantine().Restore(record, Quarantine.UserRoots())); return; }
         var helper = await S.EnsureHelperAsync();
         var response = await helper.SendAsync(new HelperRequest { Operation = HelperOperation.RestoreQuarantined, Name = record.Id.ToString() }, CancellationToken.None);
         if (!response.Ok) throw new InvalidOperationException(response.Error);

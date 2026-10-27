@@ -145,6 +145,15 @@ public sealed partial class SpaceLensPage : Page
         Show();
     }
 
+    private static readonly HashSet<string> DocumentExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".log", ".md", ".csv", ".json", ".xml", ".pdf", ".rtf", ".doc", ".docx", ".odt", ".xls", ".xlsx", ".ods", ".ppt", ".pptx", ".odp",
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".heic", ".tif", ".tiff", ".svg", ".mp3", ".wav", ".flac", ".m4a", ".ogg", ".mp4", ".mkv", ".mov", ".avi", ".webm",
+        ".zip", ".7z", ".rar", ".iso",
+    };
+
+    private static bool IsDocument(string path) => DocumentExtensions.Contains(Path.GetExtension(path));
+
     private void ShowMenu(DiskNode node, FrameworkElement target, Point point)
     {
         if (node.IsAggregate) return;
@@ -152,7 +161,8 @@ public sealed partial class SpaceLensPage : Page
         var reveal = new MenuFlyoutItem { Text = "Mostra in Esplora risorse", Icon = new FontIcon { Glyph = "" } };
         reveal.Click += (_, _) => Shell.Reveal(node.Path);
         menu.Items.Add(reveal);
-        if (!node.IsDirectory)
+        // Only documents and media open from here: "Apri" on an unknown .exe, .lnk or script would run it.
+        if (!node.IsDirectory && IsDocument(node.Path))
         {
             var open = new MenuFlyoutItem { Text = "Apri", Icon = new FontIcon { Glyph = "" } };
             open.Click += (_, _) => Shell.Open(node.Path);

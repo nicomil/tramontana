@@ -90,8 +90,12 @@ public sealed partial class ProtectionPage : Page
         List.Items.Clear();
         int problems = findings.Count(f => f.Severity >= Severity.Warning);
         int fresh = findings.Count(f => f.IsNew && f.Severity >= Severity.Warning);
+        int ignored = AppState.Current.Settings.IgnoredFindings.Count;
+        int trusted = AppState.Current.Settings.TrustedPublishers.Count;
         StatusText.Text = (problems == 0 ? "Nessun problema da controllare." : $"{problems} avvisi da controllare")
-            + (fresh > 0 ? $" · {fresh} nuovi dall'ultimo controllo" : "");
+            + (fresh > 0 ? $" · {fresh} nuovi dall'ultimo controllo" : "")
+            + (ignored > 0 ? $" · {ignored} ignorati da te" : "")
+            + (trusted > 0 ? $" · {trusted} editori fidati" : "");
         var visible = findings.Where(f => _showInfo || f.Severity >= Severity.Warning || f.Severity == Severity.Ok).ToList();
         foreach (var category in Categories.Order.Concat(visible.Select(f => f.Category)).Distinct())
         {
@@ -170,7 +174,7 @@ public sealed partial class ProtectionPage : Page
                 AppState.Current.Settings.Save();
                 await ScanAsync();
             }));
-        if (f.Severity != Severity.Ok)
+        if (f.Severity is Severity.Info or Severity.Warning)
             actions.Add(UI.Button("Ignora", async (_, _) =>
             {
                 AppState.Current.Settings.IgnoredFindings.Add(f.Id);

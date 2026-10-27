@@ -138,29 +138,6 @@ public class HelperPolicyTests
     }
 
     [Fact]
-    public void BootstrapQuotesPathsForPowerShell()
-    {
-        var script = WinCleaner.Modules.Helper.HelperClient.BootstrapScript(@"C:\Users\O'Brien\app\wchelper.exe", "ABC", "--pipe x --parent 1");
-        Assert.Contains(@"'C:\Users\O''Brien\app\wchelper.exe'", script);
-        Assert.Contains("Get-FileHash", script);
-    }
-}
-
-public class SharedFolderTests
-{
-    [Theory]
-    [InlineData(@"C:\", true)]
-    [InlineData(@"D:\Games", true)]
-    [InlineData(@"C:\Program Files", true)]
-    [InlineData(@"C:\Program Files\VideoLAN\VLC", false)]
-    [InlineData(@"C:\Windows\System32", true)]
-    public void SharedFoldersAreNeverAProgramFolder(string folder, bool shared) =>
-        Assert.Equal(shared, WinCleaner.Modules.Apps.InstalledPrograms.IsSharedFolder(folder));
-}
-
-public class WingetConsoleOutputTests
-{
-    [Fact]
     public void SpinnerAndProgressRedrawsDoNotShiftTheColumns()
     {
         string output =

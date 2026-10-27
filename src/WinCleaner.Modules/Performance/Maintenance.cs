@@ -83,8 +83,7 @@ public static partial class Maintenance
             MaintenanceTask.RepairImage => Result(await Exec("dism.exe", ["/Online", "/Cleanup-Image", "/RestoreHealth"], cancellation)),
             MaintenanceTask.DeliveryOptimization => Result(await Exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Delete-DeliveryOptimizationCache -Force"], cancellation)),
             MaintenanceTask.OptimizeDrives => Result(await Exec("defrag.exe", ["/C", "/O", "/H"], cancellation)),
-            MaintenanceTask.RestorePoint => Result(await Exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-                "Enable-ComputerRestore -Drive $env:SystemDrive\\ -ErrorAction SilentlyContinue; Checkpoint-Computer -Description 'WinCleaner' -RestorePointType MODIFY_SETTINGS"], cancellation)),
+            MaintenanceTask.RestorePoint => RestorePoint(),
             MaintenanceTask.WipeFreeSpace => Result(await Exec("cipher.exe", [$"/w:{KnownPaths.SystemDrive}"], cancellation)),
             _ => "Sconosciuto",
         };
@@ -94,16 +93,41 @@ public static partial class Maintenance
 
     private static string Result((int Exit, string Output) r) => r.Exit == 0 ? "Completato" : $"Terminato con codice {r.Exit}";
 
-    internal static async Task<(int Exit, string Output)> Exec(string file, string[] args, CancellationToken cancellation)
+    /// <summary>System Restore through WMI (root\default SystemRestore), no PowerShell involved.</summary>
+    private static string RestorePoint()
+    {
+        try
+        {
+            var scope = new System.Management.ManagementScope(@"\\.\root\default");
+            scope.Connect();
+            using var restore = new System.Management.ManagementClass(scope, new System.Management.ManagementPath("SystemRestore"), null);
+            try { restore.InvokeMethod("Enable", [KnownPaths.SystemDrive]); } catch (System.Management.ManagementException) { }
+            // RESTORE_POINT_TYPE MODIFY_SETTINGS = 12, EVENT_TYPE BEGIN_SYSTEM_CHANGE = 100.
+            var result = restore.InvokeMethod("CreateRestorePoint", ["WinCleaner", 12u, 100u]);
+            uint code = Convert.ToUInt32(result ?? 1u);
+            return code == 0 ? "Completato" : $"Terminato con codice {code}";
+        }
+        catch (Exception e) when (e is System.Management.ManagementException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+        {
+            return "Non riuscito: " + e.Message;
+        }
+    }
+
+    /// <summary>Runs a Windows tool with a clean environment; <paramref name="environment"/> adds variables (the safe way to pass a value to PowerShell: $env:NAME).</summary>
+    internal static async Task<(int Exit, string Output)> Exec(string file, string[] args, CancellationToken cancellation, IReadOnlyDictionary<string, string>? environment = null)
     {
         string path = Path.IsPathRooted(file) ? file : Path.Combine(Environment.SystemDirectory, file);
         if (file == "powershell.exe") path = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
         var info = new ProcessStartInfo(path) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args) info.ArgumentList.Add(a);
+        // No runtime hooks and no user module path reach the tool (see ProcessEnvironment).
+        ProcessEnvironment.Sanitize(info);
+        if (environment is not null) foreach (var (key, value) in environment) info.Environment[key] = value;
         using var p = Process.Start(info)!;
         var output = p.StandardOutput.ReadToEndAsync(cancellation);
         var error = p.StandardError.ReadToEndAsync(cancellation);
-        await p.WaitForExitAsync(cancellation);
+        try { await p.WaitForExitAsync(cancellation); }
+        catch (OperationCanceledException) { try { p.Kill(true); } catch (Exception) { } throw; }
         return (p.ExitCode, await output + await error);
     }
 

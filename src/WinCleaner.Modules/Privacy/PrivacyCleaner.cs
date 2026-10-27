@@ -30,8 +30,8 @@ public static class PrivacyCleaner
             }
             case PrivacyAction.Files files:
             {
-                var roots = files.Paths.Select(Path.GetDirectoryName).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase);
-                var remover = new SafeRemover(roots, mode == RemovalMode.Delete ? RemovalMode.Delete : RemovalMode.Recycle, OperationLog.Standard);
+                // Browser profiles, the Recent folder and the jump lists all live under the user's AppData.
+                var remover = new SafeRemover(Roots.User(), mode == RemovalMode.Delete ? RemovalMode.Delete : RemovalMode.Recycle, OperationLog.Standard);
                 var failed = remover.Remove(files.Paths).Where(o => !o.Succeeded && o.Error != RemovalError.NotFound).ToList();
                 if (failed.Count > 0) throw new PrivacyException($"{failed.Count} file non rimossi ({failed[0].Error})");
                 break;

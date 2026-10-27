@@ -63,9 +63,9 @@ public sealed partial class SettingsPage : Page
 
         Section("Sicurezza e registri");
         Action("Registro delle operazioni", "Ogni file rimosso, spostato o saltato, con data ed esito.", "Apri", () => Shell.Reveal(OperationLog.Standard.FilePath));
-        Action("Backup del registro di sistema", "File .reg salvati prima di ogni modifica: un doppio clic ripristina le voci.", "Apri cartella", () =>
+        Action("Backup del registro di sistema", "File .reg salvati prima di ogni modifica: un doppio clic ripristina le voci. Quelli delle operazioni da amministratore stanno in " + Path.Combine(DataFolders.HelperRoot, "Backups") + " (accessibile solo agli amministratori).", "Apri cartella", () =>
         {
-            var folder = Path.Combine(KnownPaths.LocalAppData, "WinCleaner", "Backups");
+            var folder = Path.Combine(DataFolders.UserRoot, "Backups");
             Directory.CreateDirectory(folder);
             Shell.Open(folder);
         });
@@ -88,17 +88,34 @@ public sealed partial class SettingsPage : Page
         RulesList.Children.Clear();
         var store = new WinCleaner.Modules.Protection.Rules.RuleStore();
         var files = store.Files();
+        var pins = WinCleaner.Modules.Protection.Rules.RulePins.Load();
         if (files.Count == 0) RulesList.Children.Add(new TextBlock { Text = "Nessun file aggiunto: attivi solo i controlli senza firme.", Style = UI.Style("Caption") });
         foreach (var file in files)
         {
-            var remove = UI.Button("Rimuovi", (_, _) =>
+            var remove = UI.Button("Rimuovi", async (_, _) =>
             {
-                try { store.Remove(file); } catch (Exception e) { _ = Dialogs.InfoAsync("Non rimosso", e.Message); }
+                try { store.Remove(file); await PinAsync(); } catch (Exception e) { _ = Dialogs.InfoAsync("Non rimosso", e.Message); }
                 FillRules();
             });
-            var row = UI.Row(null, file.Name, $"{file.Kind} · {Format.Bytes(file.Size)}\nSHA-256 {file.Sha256}", remove);
+            string verdict = WinCleaner.Modules.Protection.Rules.RulePins.Check(pins, file) switch
+            {
+                WinCleaner.Modules.Protection.Rules.RulePins.Verdict.Confirmed => "confermato",
+                WinCleaner.Modules.Protection.Rules.RulePins.Verdict.Changed => "CAMBIATO dopo la conferma: non viene usato",
+                _ => "non confermato come amministratore",
+            };
+            var row = UI.Row(null, file.Name, $"{file.Kind} · {Format.Bytes(file.Size)} · {verdict}\nSHA-256 {file.Sha256}", remove);
             RulesList.Children.Add(new Border { Style = UI.Style("Card"), Child = row, Padding = new Thickness(12, 8, 12, 8) });
         }
+        if (files.Count > 0 && files.Any(f => WinCleaner.Modules.Protection.Rules.RulePins.Check(pins, f) != WinCleaner.Modules.Protection.Rules.RulePins.Verdict.Confirmed))
+            RulesList.Children.Add(UI.Button("Conferma i file come amministratore", async (_, _) => { await PinAsync(); FillRules(); }));
+    }
+
+    /// <summary>The hashes of the files go to the administrator-only pins folder (one UAC prompt per session).</summary>
+    private async Task PinAsync()
+    {
+        try { await ProtectionActions.PinRulesAsync(); }
+        catch (OperationCanceledException) { await Dialogs.InfoAsync("File non confermati", "Senza la conferma da amministratore le regole restano modificabili da qualsiasi programma che gira con i tuoi diritti: la Protezione lo segnala."); }
+        catch (Exception e) { await Dialogs.InfoAsync("Conferma non riuscita", e.Message); }
     }
 
     private async Task AddRulesAsync()
@@ -115,6 +132,7 @@ public sealed partial class SettingsPage : Page
             try { await Task.Run(() => store.Add(file.Path)); }
             catch (Exception e) { problems.Add($"{file.Name}: {e.Message}"); }
         }
+        if (problems.Count < picked.Count) await PinAsync();
         FillRules();
         if (problems.Count > 0) await Dialogs.InfoAsync("Alcuni file non sono stati aggiunti", string.Join("\n", problems));
     }

@@ -121,6 +121,7 @@ public static class WingetUpdates
             StandardOutputEncoding = Encoding.UTF8,
         };
         foreach (var a in args) info.ArgumentList.Add(a);
+        Core.ProcessEnvironment.Sanitize(info, restrictPath: false);
         using var p = Process.Start(info)!;
         var stdout = p.StandardOutput.ReadToEndAsync(cancellation);
         var stderr = p.StandardError.ReadToEndAsync(cancellation);

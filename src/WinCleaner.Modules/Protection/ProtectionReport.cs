@@ -13,7 +13,7 @@ public static class ProtectionReport
         sb.AppendLine();
         sb.AppendLine($"Generato da WinCleaner il {when:d MMMM yyyy, HH:mm} · {Environment.OSVersion.VersionString}");
         sb.AppendLine();
-        var visible = findings.Where(f => ignored is null || !ignored.Contains(f.Id)).ToList();
+        var visible = findings.Where(f => f.Severity == Severity.Danger || ignored is null || !ignored.Contains(f.Id)).ToList();
         sb.AppendLine("## Riepilogo");
         sb.AppendLine();
         sb.AppendLine($"- Pericoli: {visible.Count(f => f.Severity == Severity.Danger)}");

@@ -90,7 +90,7 @@ public static class ProtectionRegistry
     {
         string? restore = Resolve(keyPath, valueName);
         string key = RegistryCleaner.Normalize(keyPath)!;
-        string backup = Path.Combine(KnownPaths.LocalAppData, "WinCleaner", "Backups", "protezione-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".reg");
+        string backup = Path.Combine(DataFolders.Backups, "protezione-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".reg");
         Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
         if (!RegistryCleaner.Export(key, backup)) throw new InvalidOperationException("Backup non riuscito: nulla è stato modificato");
         using var opened = RegistryCleaner.Open(key, writable: true) ?? throw new InvalidOperationException("chiave non trovata o non scrivibile");

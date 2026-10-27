@@ -10,8 +10,13 @@
     <Platforms>x64;ARM64</Platforms>
     <Authors>Nicola Milella</Authors>
     <Product>WinCleaner</Product>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Deterministic>true</Deterministic>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Reproducible, tamper-evident restores: packages.lock.json per project, checked by publish.ps1 in locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
   </PropertyGroup>
 </Project>

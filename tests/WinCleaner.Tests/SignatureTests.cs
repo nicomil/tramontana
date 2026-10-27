@@ -88,7 +88,9 @@ public class SignatureTests
         File.WriteAllText(list, hash + " FakeAV.Test\n");
         store.Add(list);
         var cache = new ScanCache(temp.Sub("cache.json"));
-        var check = new SignatureScanCheck(store, cache, [target], onlyExtra: true);
+        // The hash list is confirmed (pinned): without the pins the scan would also warn that the files are unconfirmed.
+        var pins = store.Files().ToDictionary(f => f.Name, f => f.Sha256, StringComparer.OrdinalIgnoreCase);
+        var check = new SignatureScanCheck(store, cache, [target], onlyExtra: true) { Pins = pins };
 
         var findings = check.Run(Fake.Context()).ToList();
         var hit = Assert.Single(findings);

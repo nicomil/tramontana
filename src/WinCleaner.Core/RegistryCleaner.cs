@@ -30,8 +30,7 @@ public sealed class RegistryCleaner
     {
         Mode = mode;
         _log = log;
-        BackupFolder = backupFolder ?? Path.Combine(KnownPaths.LocalAppData, "WinCleaner", "Backups",
-            "registro-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+        BackupFolder = backupFolder ?? Path.Combine(DataFolders.Backups, "registro-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
     }
 
     // Subtrees where only the entries inside may be deleted (not the key itself).
@@ -189,6 +188,7 @@ public sealed class RegistryCleaner
             var reg = Path.Combine(Environment.SystemDirectory, "reg.exe");
             var info = new ProcessStartInfo(reg) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (var arg in new[] { "export", key, file, "/y", "/reg:64" }) info.ArgumentList.Add(arg);
+            ProcessEnvironment.Sanitize(info);
             using var p = Process.Start(info)!;
             p.WaitForExit(60_000);
             return p.HasExited && p.ExitCode == 0 && new FileInfo(file).Length > 0;

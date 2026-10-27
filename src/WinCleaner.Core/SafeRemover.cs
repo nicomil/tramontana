@@ -76,7 +76,8 @@ public sealed class SafeRemover
     /// <summary>The app's own data (logs, backups) is never cleaned.</summary>
     public static IEnumerable<string> DefaultProtectedPaths() =>
     [
-        Path.Combine(KnownPaths.LocalAppData, "WinCleaner"),
+        DataFolders.UserRoot,
+        DataFolders.Root,
         Path.Combine(KnownPaths.ProgramData, "WinCleaner"),
     ];
 

@@ -55,21 +55,31 @@ public static unsafe partial class PinnedFileSystem
 {
     public const uint DirectoryReadAccess = FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
 
-    /// <summary>Opens a folder by its full path. Only used for the allowed roots and volume roots.</summary>
-    public static SafeFileHandle OpenDirectoryPath(string path, uint access = DirectoryReadAccess)
+    /// <summary>
+    /// Opens a folder by its full path. Only used for the allowed roots and
+    /// volume roots; with <paramref name="followReparsePoints"/> false the
+    /// folder itself must be a real folder, not a junction or a link.
+    /// </summary>
+    public static SafeFileHandle OpenDirectoryPath(string path, uint access = DirectoryReadAccess, bool followReparsePoints = true)
     {
         var handle = CreateFile(path, access, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+            FILE_FLAG_BACKUP_SEMANTICS | (followReparsePoints ? 0 : FILE_FLAG_OPEN_REPARSE_POINT), IntPtr.Zero);
         if (handle.IsInvalid)
         {
             int error = Marshal.GetLastPInvokeError();
             handle.Dispose();
             throw new FileSystemException(error, path);
         }
-        if (!GetInfo(handle).IsDirectory)
+        var info = GetInfo(handle);
+        if (!info.IsDirectory)
         {
             handle.Dispose();
             throw new FileSystemException(267 /* ERROR_DIRECTORY */, path);
+        }
+        if (!followReparsePoints && info.IsReparsePoint)
+        {
+            handle.Dispose();
+            throw new ReparsePointException(path);
         }
         return handle;
     }
@@ -154,6 +164,95 @@ public static unsafe partial class PinnedFileSystem
         {
             if (ownsCurrent) current.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Like <see cref="OpenPath"/>, but creates the folders that do not exist
+    /// yet (one name at a time, never through a reparse point). Used to put a
+    /// quarantined item back when its folder was removed in the meantime.
+    /// </summary>
+    public static SafeFileHandle OpenPathCreating(SafeFileHandle root, IReadOnlyList<string> components, uint access = DirectoryReadAccess)
+    {
+        SafeFileHandle current = root;
+        bool ownsCurrent = false;
+        try
+        {
+            for (int i = 0; i < components.Count; i++)
+            {
+                var next = OpenRelative(current, components[i], i == components.Count - 1 ? access : DirectoryReadAccess, FILE_DIRECTORY_FILE, disposition: FILE_OPEN_IF);
+                if (GetInfo(next).IsReparsePoint)
+                {
+                    next.Dispose();
+                    throw new ReparsePointException(components[i]);
+                }
+                if (ownsCurrent) current.Dispose();
+                current = next;
+                ownsCurrent = true;
+            }
+            if (!ownsCurrent) return ReOpen(root, access);
+            ownsCurrent = false;
+            return current;
+        }
+        finally
+        {
+            if (ownsCurrent) current.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Opens an alternate data stream of an open file (<c>:Zone.Identifier</c>)
+    /// relative to the file's handle, so the file is never named by path.
+    /// </summary>
+    public static SafeFileHandle OpenStream(SafeFileHandle file, string streamName, uint access, uint disposition)
+    {
+        if (string.IsNullOrEmpty(streamName) || streamName.Contains('\\') || streamName.Contains(':')) throw new ArgumentException($"Invalid stream name: {streamName}", nameof(streamName));
+        string name = ":" + streamName;
+        fixed (char* chars = name)
+        {
+            var unicode = new UNICODE_STRING { Length = (ushort)(name.Length * 2), MaximumLength = (ushort)(name.Length * 2), Buffer = chars };
+            bool added = false;
+            file.DangerousAddRef(ref added);
+            try
+            {
+                var attributes = new OBJECT_ATTRIBUTES
+                {
+                    Length = (uint)sizeof(OBJECT_ATTRIBUTES),
+                    RootDirectory = file.DangerousGetHandle(),
+                    ObjectName = &unicode,
+                    Attributes = OBJ_CASE_INSENSITIVE,
+                };
+                int status = NtCreateFile(out IntPtr raw, access | SYNCHRONIZE, &attributes, out _, IntPtr.Zero, 0,
+                    FILE_SHARE_READ | FILE_SHARE_DELETE, disposition, FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, IntPtr.Zero, 0);
+                if (status < 0) throw new FileSystemException((int)RtlNtStatusToDosError(status), name);
+                return new SafeFileHandle(raw, ownsHandle: true);
+            }
+            finally
+            {
+                if (added) file.DangerousRelease();
+            }
+        }
+    }
+
+    /// <summary>Sets the attributes of an open item (FILE_WRITE_ATTRIBUTES access); zero means "normal".</summary>
+    public static void SetAttributes(SafeFileHandle handle, uint attributes)
+    {
+        FILE_BASIC_INFO info = default;
+        info.FileAttributes = attributes == 0 ? FILE_ATTRIBUTE_NORMAL : attributes;
+        int status = NtSetInformationFile(handle, out _, &info, (uint)sizeof(FILE_BASIC_INFO), FileBasicInformation);
+        if (status < 0) throw new FileSystemException((int)RtlNtStatusToDosError(status), null);
+    }
+
+    /// <summary>
+    /// Replaces the DACL of an open item (WRITE_DAC access) with the one in
+    /// <paramref name="security"/>, through the handle: a junction swapped in
+    /// under the path cannot send the new permissions elsewhere.
+    /// </summary>
+    public static void SetDacl(SafeFileHandle handle, System.Security.AccessControl.FileSystemSecurity security)
+    {
+        byte[] descriptor = security.GetSecurityDescriptorBinaryForm();
+        uint information = DACL_SECURITY_INFORMATION | (security.AreAccessRulesProtected ? PROTECTED_DACL_SECURITY_INFORMATION : 0);
+        if (!SetKernelObjectSecurity(handle, information, descriptor))
+            throw new FileSystemException(Marshal.GetLastPInvokeError(), null);
     }
 
     /// <summary>
