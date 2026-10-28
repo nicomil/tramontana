@@ -79,7 +79,7 @@ public sealed partial class UpdatesPage : Page
             UI.Show(Bar, "Nessun programma scelto", "Spunta i programmi da aggiornare.", InfoBarSeverity.Informational);
             return;
         }
-        if (!await Dialogs.ConfirmAsync("Aggiornare?", $"{chosen.Count} programmi verranno aggiornati uno alla volta. Chiudili prima: alcuni installer li chiudono da soli. Windows può chiedere il permesso di amministratore.", "Aggiorna")) return;
+        if (!await Dialogs.ConfirmAsync("Aggiornare?", $"{chosen.Count} programmi verranno aggiornati uno alla volta. Se un programma è aperto ti verrà chiesto di chiuderlo. Windows può chiedere il permesso di amministratore.", "Aggiorna")) return;
         _busy = true;
         _install.IsEnabled = _check.IsEnabled = false;
         Progress.Visibility = Visibility.Visible;
@@ -88,7 +88,19 @@ public sealed partial class UpdatesPage : Page
         {
             state.Text = "Aggiornamento in corso…";
             StatusText.Text = $"Aggiornamento di {update.Name}…";
-            var error = await WingetUpdates.UpgradeAsync(update.Id, CancellationToken.None);
+            string? error = null;
+            // A silent installer gives up on a file in use: ask before, instead of failing after the download.
+            var running = await Task.Run(() => WingetUpdates.RunningProcesses(update));
+            if (running.Count > 0)
+            {
+                string names = string.Join(", ", running.Select(p => p.ProcessName + ".exe").Distinct(StringComparer.OrdinalIgnoreCase).Take(5));
+                if (await Dialogs.ConfirmAsync("Programma aperto", $"{update.Name} è in esecuzione ({names}). L'installer non può sostituire un programma aperto. Chiuderlo adesso e aggiornare?", "Chiudi e aggiorna"))
+                    await WingetUpdates.CloseAsync(running, TimeSpan.FromSeconds(8));
+                else
+                    error = "il programma è aperto: chiudilo e riprova";
+            }
+            foreach (var p in running) p.Dispose();
+            error ??= await WingetUpdates.UpgradeAsync(update, CancellationToken.None);
             state.Text = error is null ? "Aggiornato" : "Non riuscito: " + error;
             if (error is null) { ok++; box.IsChecked = false; box.IsEnabled = false; }
             WinCleaner.Core.OperationLog.Standard.Write($"update\t{(error is null ? "OK" : "ERR " + error)}\t{update.Id}");

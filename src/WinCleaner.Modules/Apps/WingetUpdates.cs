@@ -44,17 +44,88 @@ public static class WingetUpdates
         return updates;
     }
 
-    /// <summary>Installs one update silently. Returns null on success, or the error text.</summary>
-    public static async Task<string?> UpgradeAsync(string id, CancellationToken cancellation)
+    /// <summary>winget's own exit codes (APPINSTALLER_CLI_ERROR_*), as the process returns them.</summary>
+    public const int InstallerFailed = unchecked((int)0x8A15010C);
+    public const int UpdateNotApplicable = unchecked((int)0x8A15002B);
+    public const int NoApplicableInstaller = unchecked((int)0x8A150011);
+    public const int MultiplePackagesFound = unchecked((int)0x8A150014);
+
+    /// <summary>
+    /// Installs one update silently. Returns null on success, or a sentence for the user.
+    /// A newer version that winget found in the Microsoft Store often does not apply to a
+    /// program installed from an installer (the Store carries a different package): the
+    /// same program is then asked by name from the winget source, where its installer is.
+    /// </summary>
+    public static async Task<string?> UpgradeAsync(AvailableUpdate update, CancellationToken cancellation)
     {
         var winget = WingetPath() ?? throw new FileNotFoundException("winget non è installato");
+        var (exit, lastLine) = await UpgradeOnceAsync(winget, ["--id", update.Id, "--exact"], update.Id, cancellation);
+        if (exit == UpdateNotApplicable && update.Source.Equals("msstore", StringComparison.OrdinalIgnoreCase) && update.Name.Length > 0)
+            (exit, lastLine) = await UpgradeOnceAsync(winget, ["--name", update.Name, "--source", "winget"], update.Id, cancellation);
+        return exit == 0 ? null : Describe(exit, lastLine);
+    }
+
+    private static async Task<(int Exit, string? LastLine)> UpgradeOnceAsync(string winget, string[] selection, string id, CancellationToken cancellation)
+    {
         var (exit, output) = await RunAsync(winget,
-            ["upgrade", "--id", id, "--exact", "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"],
+            ["upgrade", .. selection, "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"],
             cancellation);
         var lastLine = output.Split('\n').Select(StripProgress).Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
-        Core.OperationLog.Standard.Write($"updates\tupgrade exit={exit}\t{id}\t{lastLine}");
-        if (exit == 0) return null;
-        return lastLine ?? $"winget ha restituito il codice {exit}";
+        Core.OperationLog.Standard.Write($"updates\tupgrade exit={exit}\t{id}\t{string.Join(' ', selection)}\t{lastLine}");
+        return (exit, lastLine);
+    }
+
+    /// <summary>What to tell the user for a failed upgrade: winget's last line is a log path or a code more often than an explanation.</summary>
+    public static string Describe(int exit, string? lastLine) => exit switch
+    {
+        InstallerFailed => "L'installer del programma si è fermato. Se il programma è aperto, chiudilo e riprova; altrimenti aggiornalo dal suo sito.",
+        UpdateNotApplicable => "La versione nuova è nel Microsoft Store e non si applica a questa installazione: aggiorna il programma dal Microsoft Store o dal suo sito.",
+        NoApplicableInstaller => "Nessun installer adatto a questo PC nella versione nuova.",
+        MultiplePackagesFound => "winget trova più programmi con questo nome: aggiornalo dal terminale con «winget upgrade --id …».",
+        _ => lastLine is { Length: > 0 } ? lastLine : $"winget ha restituito il codice 0x{exit:X8}",
+    };
+
+    /// <summary>
+    /// Processes running from the program's install folder: a silent installer cannot replace
+    /// an executable that is in use, and it gives up instead of asking (that is what happened
+    /// with Ollama: "DeleteFile failed; code 5"). The caller closes them, or skips the update.
+    /// </summary>
+    public static List<Process> RunningProcesses(AvailableUpdate update, IReadOnlyList<InstalledProgram>? programs = null)
+    {
+        programs ??= InstalledPrograms.All(includeStore: false);
+        var folders = programs
+            .Where(p => p.InstallLocation is not null && MatchesProgram(update.Name, p.Name) && !InstalledPrograms.IsSharedFolder(p.InstallLocation))
+            .Select(p => p.InstallLocation!)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var result = new List<Process>();
+        foreach (var folder in folders) result.AddRange(InstalledPrograms.ProcessesIn(folder));
+        return result.DistinctBy(p => p.Id).ToList();
+    }
+
+    /// <summary>
+    /// winget prints the installed program's display name, cut to the column width; the
+    /// registry has the whole name. A cut name must be a prefix long enough not to be ambiguous.
+    /// </summary>
+    public static bool MatchesProgram(string wingetName, string programName)
+    {
+        wingetName = wingetName.Trim();
+        programName = programName.Trim();
+        if (wingetName.Length == 0) return false;
+        if (programName.Equals(wingetName, StringComparison.OrdinalIgnoreCase)) return true;
+        return wingetName.Length >= 12 && programName.StartsWith(wingetName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Asks the processes to close, then ends those still alive after <paramref name="grace"/>. Only the user's own processes can be ended this way.</summary>
+    public static async Task CloseAsync(IReadOnlyList<Process> processes, TimeSpan grace)
+    {
+        foreach (var p in processes) { try { p.CloseMainWindow(); } catch (InvalidOperationException) { } }
+        var deadline = DateTime.UtcNow + grace;
+        while (DateTime.UtcNow < deadline && processes.Any(p => { try { return !p.HasExited; } catch (InvalidOperationException) { return false; } }))
+            await Task.Delay(250);
+        foreach (var p in processes)
+        {
+            try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+        }
     }
 
     /// <summary>Parses every table of winget's output (header line followed by a line of dashes).</summary>

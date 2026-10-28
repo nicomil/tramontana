@@ -152,4 +152,38 @@ public class HelperPolicyTests
         Assert.Equal(new AvailableUpdate("Git", "Git.Git", "2.54.0", "2.56.0.3", "winget"), updates[0]);
         Assert.Equal("VideoLAN.VLC", updates[1].Id);
     }
+
+    [Theory]
+    [InlineData("PowerToys (Preview) x64", "PowerToys (Preview) x64", true)]
+    [InlineData("Ollama version 0.31.1", "ollama version 0.31.1", true)]
+    [InlineData("Microsoft Visual Studio Code (User", "Microsoft Visual Studio Code (User)", true)]
+    [InlineData("Git", "Git Extensions", false)]
+    [InlineData("", "Git", false)]
+    [InlineData("Python 3.12", "Python 3.12.4 (64-bit)", false)]
+    public void MatchesWingetNamesToInstalledPrograms(string winget, string program, bool expected) =>
+        Assert.Equal(expected, WingetUpdates.MatchesProgram(winget, program));
+
+    [Fact]
+    public void ExplainsWingetFailuresInsteadOfQuotingLogPaths()
+    {
+        Assert.Contains("chiudilo", WingetUpdates.Describe(WingetUpdates.InstallerFailed, @"Il log del programma di installazione è disponibile in: 'C:\x.log'"));
+        Assert.Contains("Microsoft Store", WingetUpdates.Describe(WingetUpdates.UpdateNotApplicable, "Una versione più recente del pacchetto è disponibile in un'origine configurata, ma non si applica"));
+        Assert.Equal("qualcosa", WingetUpdates.Describe(1, "qualcosa"));
+        Assert.Contains("0x8A150001", WingetUpdates.Describe(unchecked((int)0x8A150001), null));
+    }
+
+    [Fact]
+    public void RunningProcessesLooksOnlyInTheProgramsOwnFolder()
+    {
+        var update = new AvailableUpdate("Fake Program", "Fake.Program", "1", "2", "winget");
+        var programs = new[]
+        {
+            new InstalledProgram { Id = "a", Name = "Fake Program", InstallLocation = Path.Combine(KnownPaths.ProgramFiles, "FakeProgram-" + Guid.NewGuid().ToString("N")) },
+            new InstalledProgram { Id = "b", Name = "Other", InstallLocation = Environment.SystemDirectory },
+        };
+        Assert.Empty(WingetUpdates.RunningProcesses(update, programs));
+        // A program that claims a shared folder as its own must not make every process "its" process.
+        var shared = new[] { new InstalledProgram { Id = "c", Name = "Fake Program", InstallLocation = KnownPaths.ProgramFiles } };
+        Assert.Empty(WingetUpdates.RunningProcesses(update, shared));
+    }
 }
