@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "app-files": the GitHub Actions artifact is a zip with the
+     app's own executables and libraries. WinCleaner.dll is not in it on purpose: its SHA-256 is
+     compiled into wchelper.exe before signing (docs/code-signing-policy.md). -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="WinCleaner.exe" product-name="WinCleaner">
+      <authenticode-sign/>
+    </pe-file>
+    <pe-file path="wchelper.exe" product-name="WinCleaner">
+      <authenticode-sign/>
+    </pe-file>
+    <pe-file path="WinCleaner.Core.dll" product-name="WinCleaner">
+      <authenticode-sign/>
+    </pe-file>
+    <pe-file path="WinCleaner.Modules.dll" product-name="WinCleaner">
+      <authenticode-sign/>
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

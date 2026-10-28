@@ -1,0 +1,174 @@
+# Builds a release from a tag v<version>, has it signed by SignPath (docs/code-signing-policy.md)
+# and publishes the installer on the Releases page. Before the SignPath project exists, the
+# workflow still runs and publishes an unsigned pre-release.
+#
+# Repository variables: SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_SIGNER_THUMBPRINT
+# (SHA-1 of the certificate SignPath signs with). Secret: SIGNPATH_API_TOKEN.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  OUT: artifacts\WinCleaner-x64
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Check that the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          if ($tag -ne $version) { throw "il tag v$tag non corrisponde alla versione $version in Directory.Build.props" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+        id: version
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build (unsigned, helper bound to the expected signer)
+        shell: pwsh
+        run: |
+          $signer = "${{ vars.SIGNPATH_SIGNER_THUMBPRINT }}"
+          if ($signer) { .\scripts\publish.ps1 -NoSign -ExpectedSigner $signer }
+          else { .\scripts\publish.ps1 -NoSign }
+
+      # ---- 1st signing request: the app's own executables and libraries ----
+      - name: Collect the files to sign
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory artifacts\to-sign | Out-Null
+          foreach ($f in "WinCleaner.exe", "wchelper.exe", "WinCleaner.Core.dll", "WinCleaner.Modules.dll") {
+            Copy-Item "$env:OUT\$f" artifacts\to-sign\
+          }
+
+      - name: Upload unsigned files
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        id: upload-files
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-files-unsigned
+          path: artifacts/to-sign/
+
+      - name: Sign the files (SignPath)
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: app-files
+          github-artifact-id: ${{ steps.upload-files.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: artifacts/signed-files
+
+      - name: Put the signed files in place and check them
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          $expected = "${{ vars.SIGNPATH_SIGNER_THUMBPRINT }}"
+          foreach ($f in Get-ChildItem artifacts\signed-files -File) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            if ($sig.Status -ne "Valid") { throw "$($f.Name): firma $($sig.Status)" }
+            if ($sig.SignerCertificate.Thumbprint -ne $expected) { throw "$($f.Name): firmato da $($sig.SignerCertificate.Thumbprint), atteso $expected (aggiorna SIGNPATH_SIGNER_THUMBPRINT)" }
+            Copy-Item $f.FullName "$env:OUT\$($f.Name)" -Force
+          }
+          $hash = (Get-FileHash "$env:OUT\WinCleaner.dll" -Algorithm SHA256).Hash
+          $identity = (& "$env:OUT\wchelper.exe" --identity | Out-String).Trim()
+          if ($identity -ne "$hash|$expected") { throw "wchelper.exe riporta $identity invece di $hash|$expected" }
+          "Firmati e verificati: $((Get-ChildItem artifacts\signed-files -File).Name -join ', ')"
+
+      # ---- installer from the signed files, then 2nd signing request ----
+      - name: Build the installer
+        shell: pwsh
+        run: .\scripts\publish.ps1 -NoSign -SetupOnly
+
+      - name: Upload unsigned installer
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        id: upload-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-unsigned
+          path: artifacts/WinCleaner-Setup-*.exe
+
+      - name: Sign the installer (SignPath)
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: artifacts/signed-setup
+
+      - name: Put the signed installer in place
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem artifacts\signed-setup -Filter "WinCleaner-Setup-*.exe" | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature $signed.FullName
+          if ($sig.Status -ne "Valid") { throw "setup: firma $($sig.Status)" }
+          Copy-Item $signed.FullName "artifacts\$($signed.Name)" -Force
+
+      - name: Checksums and release notes
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem artifacts -Filter "WinCleaner-Setup-*.exe" | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature $setup.FullName
+          $signed = $sig.Status -eq "Valid"
+          "signed=$($signed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "$((Get-FileHash $setup.FullName -Algorithm SHA256).Hash)  $($setup.Name)" | Set-Content artifacts\SHA256SUMS.txt -Encoding ascii
+          $notes = @()
+          $notes += "## WinCleaner ${{ github.ref_name }}"
+          $notes += ""
+          $notes += if ($signed) { "Installer signed by **$($sig.SignerCertificate.Subject)**." } else { "**Unsigned build**: the installer is not code-signed yet (SmartScreen will warn)." }
+          $notes += ""
+          $notes += "Code signing policy: https://github.com/nicomil/wincleaner/blob/main/docs/code-signing-policy.md"
+          $notes += "Free code signing provided by SignPath.io, certificate by SignPath Foundation."
+          $notes += ""
+          $notes += "SHA-256:"
+          $notes += '```'
+          $notes += (Get-Content artifacts\SHA256SUMS.txt)
+          $notes += '```'
+          $notes -join "`n" | Set-Content artifacts\notes.md -Encoding utf8
+        id: notes
+
+      - name: Upload the installer as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinCleaner-Setup
+          path: |
+            artifacts/WinCleaner-Setup-*.exe
+            artifacts/SHA256SUMS.txt
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: artifacts/notes.md
+          prerelease: ${{ steps.notes.outputs.signed != 'true' }}
+          files: |
+            artifacts/WinCleaner-Setup-*.exe
+            artifacts/SHA256SUMS.txt

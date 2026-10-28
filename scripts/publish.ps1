@@ -19,9 +19,14 @@ param(
     # named "WinCleaner Code Signing" is used (scripts\new-signing-cert.ps1 creates one); -NoSign skips signing.
     [string]$SignThumbprint,
     [switch]$NoSign,
+    # CI: the files are signed later by SignPath (docs/code-signing-policy.md). Nothing is signed here, but the
+    # helper is compiled with the thumbprint of the certificate the signed WinCleaner.exe will carry.
+    [string]$ExpectedSigner,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     # Skip the vulnerability audit (offline builds).
-    [switch]$NoAudit
+    [switch]$NoAudit,
+    # Only build the installer from an existing -Out folder (CI: after SignPath returned the signed files).
+    [switch]$SetupOnly
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -37,6 +42,8 @@ if (-not $NoSign -and -not $SignThumbprint) {
     else { throw "Nessun certificato di firma: esegui scripts\new-signing-cert.ps1 (o passa -SignThumbprint, o -NoSign per una build di prova non firmata)" }
 }
 if ($NoSign) { $SignThumbprint = "" }
+if ($ExpectedSigner -and -not $NoSign) { throw "-ExpectedSigner va con -NoSign: la firma la mette SignPath dopo la build" }
+if ($SetupOnly -and -not $Setup) { $Setup = $true }
 
 $signScript = Join-Path $PSScriptRoot "sign-file.ps1"
 function Sign-Files([string[]]$files) {
@@ -46,6 +53,10 @@ function Sign-Files([string[]]$files) {
     }
 }
 
+if ($SetupOnly) {
+    if (-not (Test-Path "$Out\WinCleaner.exe")) { throw "$Out non contiene una build: esegui prima publish.ps1 senza -SetupOnly" }
+}
+else {
 if (Test-Path $Out) {
     # A copy started from this folder keeps its files locked: close it first.
     $full = (Resolve-Path $Out).Path
@@ -78,14 +89,15 @@ Sign-Files $own
 
 # The helper is bound to this very build of the app (hash of WinCleaner.dll, signer of WinCleaner.exe): it refuses any other caller.
 $appHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$Out\WinCleaner.dll").Hash
-dotnet publish src\WinCleaner.Helper -c Release -r $rid -p:Platform=$platform --self-contained -p:PublishSingleFile=true "-p:WcAppSha256=$appHash" "-p:WcSignerThumbprint=$SignThumbprint" --no-restore -o "$Out\helper-tmp" -nologo -v q
+$signer = if ($SignThumbprint) { $SignThumbprint } else { $ExpectedSigner }
+dotnet publish src\WinCleaner.Helper -c Release -r $rid -p:Platform=$platform --self-contained -p:PublishSingleFile=true "-p:WcAppSha256=$appHash" "-p:WcSignerThumbprint=$signer" --no-restore -o "$Out\helper-tmp" -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "helper publish failed" }
 Move-Item -Force "$Out\helper-tmp\wchelper.exe" "$Out\wchelper.exe"
 Remove-Item -Recurse -Force "$Out\helper-tmp"
 Sign-Files @("$Out\wchelper.exe")
 $reported = (& "$Out\wchelper.exe" --identity | Out-String).Trim()
-if ($reported -ne "$appHash|$SignThumbprint") { throw "wchelper.exe non riporta l'identità dell'app ($reported invece di $appHash|$SignThumbprint)" }
-"Helper legato a WinCleaner.dll $($appHash.Substring(0, 16))... firmata da $SignThumbprint"
+if ($reported -ne "$appHash|$signer") { throw "wchelper.exe non riporta l'identità dell'app ($reported invece di $appHash|$signer)" }
+"Helper legato a WinCleaner.dll $($appHash.Substring(0, 16))... firmata da $(if ($signer) { $signer } else { 'nessuno (build di prova)' })"
 
 if ($SignThumbprint) {
     foreach ($file in $own + @("$Out\wchelper.exe")) {
@@ -96,6 +108,7 @@ if ($SignThumbprint) {
 }
 $size = (Get-ChildItem $Out -Recurse | Measure-Object Length -Sum).Sum / 1MB
 "Pubblicato in $Out ({0:N0} MB)" -f $size
+}
 
 if ($Zip) {
     $version = (Get-Item "$Out\WinCleaner.exe").VersionInfo.ProductVersion -replace '\+.*$', ''
