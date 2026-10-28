@@ -18,4 +18,5 @@ jobs:
       - name: Build
         run: dotnet build WinCleaner.slnx -c Release -p:Platform=x64 --no-restore
       - name: Test
-        run: dotnet test tests/WinCleaner.Tests -c Release -p:Platform=x64 --no-build
+        # Built by project: the solution build puts the outputs in bin\Release, dotnet test with Platform=x64 looks in bin\x64\Release.
+        run: dotnet test tests/WinCleaner.Tests -c Release -p:Platform=x64 --no-restore
