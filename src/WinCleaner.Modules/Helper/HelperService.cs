@@ -236,8 +236,8 @@ public static class HelperService
     /// <summary>The quarantine under ProgramData, owned by administrators and checked as such on every use (see SecureFolder).</summary>
     private static Protection.Quarantine SystemQuarantine()
     {
-        SecureFolder.Ensure(KnownPaths.ProgramData, "WinCleaner");
-        string folder = SecureFolder.Ensure(KnownPaths.ProgramData, "WinCleaner", "Quarantine");
+        SecureFolder.Ensure(DataFolders.SystemParent, "WinCleaner");
+        string folder = SecureFolder.Ensure(DataFolders.SystemParent, "WinCleaner", "Quarantine");
         return new Protection.Quarantine(folder, OperationLog.Standard) { RequireAdminOwner = true };
     }
 

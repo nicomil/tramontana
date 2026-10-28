@@ -13,7 +13,7 @@ namespace WinCleaner.Modules.Protection.Rules;
 /// </summary>
 public static class RulePins
 {
-    public static string Folder => Path.Combine(KnownPaths.ProgramData, "WinCleaner", "Pins");
+    public static string Folder => Path.Combine(DataFolders.SystemRoot, "Pins");
     public static string File => Path.Combine(Folder, "rules.json");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -34,8 +34,8 @@ public static class RulePins
     /// <summary>Runs in the helper: hashes the user's rule files and writes the pins into the administrator-only folder.</summary>
     public static int Pin(RuleStore store)
     {
-        SecureFolder.Ensure(KnownPaths.ProgramData, "WinCleaner");
-        string folder = SecureFolder.Ensure(KnownPaths.ProgramData, ["WinCleaner", "Pins"], readableByEveryone: true);
+        SecureFolder.Ensure(DataFolders.SystemParent, "WinCleaner");
+        string folder = SecureFolder.Ensure(DataFolders.SystemParent, ["WinCleaner", "Pins"], readableByEveryone: true);
         var pins = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in store.Files()) pins[file.Name] = file.Sha256;
         System.IO.File.WriteAllText(Path.Combine(folder, "rules.json"), JsonSerializer.Serialize(pins, Json));

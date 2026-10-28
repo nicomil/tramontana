@@ -1,6 +1,27 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using WinCleaner.Core;
 
 namespace WinCleaner.Tests;
+
+/// <summary>
+/// Keeps the tests off the machine's own WinCleaner data: logs, registry backups,
+/// system quarantine and rule pins all go to %TEMP%\wctests-data, emptied at the
+/// start of every run. Runs once, when the test assembly is loaded.
+/// </summary>
+internal static class TestEnvironment
+{
+    public static string Root { get; } = System.IO.Path.Combine(KnownPaths.Temp, "wctests-data");
+
+    [ModuleInitializer]
+    internal static void Isolate()
+    {
+        try { if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        Directory.CreateDirectory(Root);
+        DataFolders.Use(System.IO.Path.Combine(Root, "User"));
+        DataFolders.UseSystem(System.IO.Path.Combine(Root, "System"));
+    }
+}
 
 /// <summary>A fresh folder under %TEMP% that is removed afterwards, links first.</summary>
 public sealed class TempDir : IDisposable

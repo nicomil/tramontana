@@ -33,7 +33,7 @@ public sealed class Quarantine
     public string Folder { get; }
     private readonly OperationLog? _log;
     public static string UserFolder => Path.Combine(KnownPaths.LocalAppData, "WinCleaner", "Quarantine");
-    public static string SystemFolder => Path.Combine(KnownPaths.ProgramData, "WinCleaner", "Quarantine");
+    public static string SystemFolder => Path.Combine(DataFolders.SystemRoot, "Quarantine");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     /// <summary>The folder and the index must be owned by administrators (the helper's quarantine under ProgramData).</summary>

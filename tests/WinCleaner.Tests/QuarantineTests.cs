@@ -149,7 +149,11 @@ public class EndToEndTests
         Assert.Contains("## Riepilogo", report);
     }
 
-    /// <summary>System quarantine through the helper service, round trip, on a folder under ProgramData (needs an administrator token).</summary>
+    /// <summary>
+    /// System quarantine through the helper service, round trip (needs an administrator token). The file sits in a
+    /// throwaway folder under ProgramData because the quarantine only takes system roots; the quarantine itself is
+    /// the test one (see <see cref="TestEnvironment"/>), never the machine's.
+    /// </summary>
     [Fact]
     public async Task HelperQuarantinesRestoresAndDeletesSystemItems()
     {
@@ -169,6 +173,7 @@ public class EndToEndTests
             var parts = outcome.Message!.Split('|');
             record = new Quarantine(Quarantine.SystemFolder, null).Records().Single(r => r.Id == Guid.ParseExact(parts[0], "N"));
             Assert.True(File.Exists(record.StoredPath));
+            Assert.StartsWith(TestEnvironment.Root, record.StoredPath, StringComparison.OrdinalIgnoreCase);
 
             var restore = await HelperService.HandleAsync(new HelperRequest { Operation = HelperOperation.RestoreQuarantined, Name = record.Id.ToString() }, CancellationToken.None);
             Assert.True(restore.Ok, restore.Error);

@@ -15,12 +15,26 @@ public static class DataFolders
     /// <summary>The user's folder, whatever the current process uses (for the screens that open it).</summary>
     public static string UserRoot => Path.Combine(KnownPaths.LocalAppData, "WinCleaner");
 
+    /// <summary>
+    /// The folder the administrator-only data (system quarantine, rule pins, helper logs) hangs
+    /// from: ProgramData, where <see cref="SecureFolder.Ensure(string, string[])"/> creates
+    /// <c>WinCleaner</c> and its children. The tests point it at a temporary folder so that
+    /// they never touch the machine's real quarantine.
+    /// </summary>
+    public static string SystemParent { get; private set; } = KnownPaths.ProgramData;
+
+    /// <summary><see cref="SystemParent"/>\WinCleaner.</summary>
+    public static string SystemRoot => Path.Combine(SystemParent, "WinCleaner");
+
     /// <summary>The helper's folder, for the screens that mention it.</summary>
-    public static string HelperRoot => Path.Combine(KnownPaths.ProgramData, "WinCleaner", "Helper");
+    public static string HelperRoot => Path.Combine(SystemRoot, "Helper");
 
     public static void Use(string root)
     {
         Root = root;
         OperationLog.ResetStandard();
     }
+
+    /// <summary>For the tests only: hangs the administrator-only data from another folder.</summary>
+    internal static void UseSystem(string parent) => SystemParent = parent;
 }
