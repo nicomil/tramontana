@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Tramontana.Modules</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Rules\*.json" LogicalName="Tramontana.Rules.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Rules\*.yar" LogicalName="Tramontana.Rules.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="System.Management" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tramontana.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tramontana.Core\Tramontana.Core.csproj" />
+  </ItemGroup>
+</Project>

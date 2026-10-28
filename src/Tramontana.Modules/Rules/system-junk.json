@@ -1,0 +1,335 @@
+// Cleaning rules for Windows itself, apps and developer tools.
+// Browser caches are generated in code (BrowserCatalog), one rule per browser.
+// Every path must fall strictly under an allowed root (AllowedRoots), which a
+// test checks. "admin": true rules are cleaned by the elevated helper.
+{
+  "version": 1,
+  "globalExcludes": ["desktop.ini", "tramontana-*"],
+  "rules": [
+    // ---- Windows (user) ----
+    {
+      "id": "win-temp-user", "group": "windows", "category": "temp-user",
+      "title": "File temporanei",
+      "description": "La cartella %TEMP% dell'utente. Restano i file cambiati nelle ultime 24 ore, che potrebbero servire a un programma aperto.",
+      "paths": ["%TEMP%", "%LOCALAPPDATALOW%\\Temp"],
+      "minAgeHours": 24
+    },
+    {
+      "id": "win-thumbcache", "group": "windows", "category": "thumbcache",
+      "title": "Cache delle miniature e delle icone",
+      "description": "Explorer le ricrea quando servono. Quelle in uso vengono saltate.",
+      "paths": ["%LOCALAPPDATA%\\Microsoft\\Windows\\Explorer"],
+      "include": ["thumbcache_*.db", "iconcache_*.db"]
+    },
+    {
+      "id": "win-wer-user", "group": "windows", "category": "wer-user",
+      "title": "Segnalazioni errori di Windows",
+      "description": "Rapporti degli arresti anomali già inviati o in coda.",
+      "paths": [
+        "%LOCALAPPDATA%\\Microsoft\\Windows\\WER\\ReportArchive",
+        "%LOCALAPPDATA%\\Microsoft\\Windows\\WER\\ReportQueue",
+        "%LOCALAPPDATA%\\Microsoft\\Windows\\WER\\Temp"
+      ]
+    },
+    {
+      "id": "win-crashdumps", "group": "windows", "category": "crashdumps",
+      "title": "Dump degli arresti anomali delle app",
+      "paths": ["%LOCALAPPDATA%\\CrashDumps"]
+    },
+    {
+      "id": "win-inetcache", "group": "windows", "category": "inetcache",
+      "title": "Cache Internet di Windows",
+      "description": "Usata da Internet Explorer, dalle app WebView e da Office. Gli allegati aperti da Outlook restano.",
+      "paths": ["%LOCALAPPDATA%\\Microsoft\\Windows\\INetCache"],
+      "excludes": ["Content.Outlook", "Content.MSO"],
+      "minAgeHours": 1
+    },
+    {
+      "id": "win-shadercache", "group": "windows", "category": "shadercache",
+      "title": "Cache degli shader della scheda video",
+      "description": "DirectX, NVIDIA, AMD e Intel la ricreano. I giochi potrebbero impiegare qualche secondo in più al primo avvio.",
+      "paths": [
+        "%LOCALAPPDATA%\\D3DSCache",
+        "%LOCALAPPDATA%\\NVIDIA\\DXCache",
+        "%LOCALAPPDATA%\\NVIDIA\\GLCache",
+        "%LOCALAPPDATALOW%\\NVIDIA\\PerDriverVersion\\DXCache",
+        "%LOCALAPPDATA%\\AMD\\DxCache",
+        "%LOCALAPPDATA%\\AMD\\DxcCache",
+        "%LOCALAPPDATA%\\AMD\\VkCache",
+        "%LOCALAPPDATA%\\AMD\\GLCache",
+        "%LOCALAPPDATALOW%\\Intel\\ShaderCache"
+      ]
+    },
+    {
+      "id": "win-store-caches", "group": "windows", "category": "store-caches",
+      "title": "Cache delle app di Microsoft Store",
+      "paths": [
+        "%LOCALAPPDATA%\\Packages\\*\\AC\\INetCache",
+        "%LOCALAPPDATA%\\Packages\\*\\AC\\Temp",
+        "%LOCALAPPDATA%\\Packages\\*\\TempState"
+      ],
+      "minAgeHours": 24
+    },
+    {
+      "id": "win-onedrive-logs", "group": "windows", "category": "onedrive-logs",
+      "title": "Log di OneDrive",
+      "paths": ["%LOCALAPPDATA%\\Microsoft\\OneDrive\\logs"],
+      "minAgeHours": 24
+    },
+    {
+      "id": "win-installer-temp", "group": "windows", "category": "installer-temp",
+      "title": "Avanzi degli aggiornamenti delle app",
+      "description": "File temporanei lasciati dagli aggiornamenti automatici (Squirrel, Electron).",
+      "paths": ["%LOCALAPPDATA%\\SquirrelTemp", "%LOCALAPPDATA%\\Temp\\SquirrelTemp"]
+    },
+
+    // ---- Windows (system, administrator) ----
+    {
+      "id": "sys-temp", "group": "system", "category": "temp-system",
+      "title": "File temporanei di sistema",
+      "description": "C:\\Windows\\Temp. Restano i file cambiati nelle ultime 24 ore.",
+      "paths": ["%WINDIR%\\Temp"],
+      "minAgeHours": 24, "admin": true
+    },
+    {
+      "id": "sys-wu-download", "group": "system", "category": "wu-download",
+      "title": "Download di Windows Update",
+      "description": "Pacchetti già scaricati. Windows li riscarica se servono ancora. Saltato mentre un aggiornamento è in corso.",
+      "paths": ["%WINDIR%\\SoftwareDistribution\\Download"],
+      "minAgeHours": 72, "admin": true,
+      "processes": ["TiWorker", "TrustedInstaller", "MoUsoCoreWorker"]
+    },
+    {
+      "id": "sys-wer", "group": "system", "category": "wer-system",
+      "title": "Segnalazioni errori di sistema",
+      "paths": [
+        "%PROGRAMDATA%\\Microsoft\\Windows\\WER\\ReportArchive",
+        "%PROGRAMDATA%\\Microsoft\\Windows\\WER\\ReportQueue",
+        "%PROGRAMDATA%\\Microsoft\\Windows\\WER\\Temp"
+      ],
+      "admin": true
+    },
+    {
+      "id": "sys-logs", "group": "system", "category": "logs-system",
+      "title": "Log di Windows",
+      "description": "Log di manutenzione e aggiornamento più vecchi di una settimana.",
+      "paths": [
+        "%WINDIR%\\Logs\\CBS",
+        "%WINDIR%\\Logs\\DISM",
+        "%WINDIR%\\Logs\\MoSetup",
+        "%WINDIR%\\Logs\\WindowsUpdate",
+        "%WINDIR%\\Logs\\NetSetup",
+        "%WINDIR%\\Logs\\SIH",
+        "%WINDIR%\\Logs\\waasmedic",
+        "%WINDIR%\\debug"
+      ],
+      "include": ["*.log", "*.etl", "*.cab", "*.txt", "*.old"],
+      "minAgeHours": 168, "admin": true
+    },
+    {
+      "id": "sys-memory-dumps", "group": "system", "category": "memory-dumps",
+      "title": "Dump della memoria",
+      "description": "Servono per capire la causa di una schermata blu. Toglili se il PC funziona bene.",
+      "paths": ["%WINDIR%\\Minidump", "%WINDIR%\\LiveKernelReports"],
+      "risk": "medium", "autoSelect": false, "admin": true
+    },
+    {
+      "id": "sys-memory-dump-full", "group": "system", "category": "memory-dumps",
+      "title": "Dump della memoria",
+      "paths": ["%WINDIR%\\MEMORY.DMP"],
+      "target": "itself", "risk": "medium", "autoSelect": false, "admin": true
+    },
+    {
+      "id": "sys-prefetch", "group": "system", "category": "prefetch",
+      "title": "Dati di Prefetch",
+      "description": "Windows li ricrea; i programmi partiranno un po' più lenti le prime volte.",
+      "paths": ["%WINDIR%\\Prefetch"],
+      "include": ["*.pf"],
+      "risk": "medium", "autoSelect": false, "admin": true
+    },
+    {
+      "id": "sys-chkdsk", "group": "system", "category": "chkdsk",
+      "title": "Frammenti di Controllo disco",
+      "description": "Cartelle FOUND.000 create da chkdsk con pezzi di file recuperati.",
+      "paths": ["%SYSTEMDRIVE%\\FOUND.*"],
+      "target": "itself", "risk": "medium", "autoSelect": false, "admin": true
+    },
+    {
+      "id": "sys-setup-leftovers", "group": "system", "category": "setup-leftovers",
+      "title": "File temporanei di installazione di Windows",
+      "description": "Lasciati dagli aggiornamenti di versione di Windows. Toglili solo se l'aggiornamento è finito.",
+      "paths": [
+        "%SYSTEMDRIVE%\\$WINDOWS.~BT",
+        "%SYSTEMDRIVE%\\$WINDOWS.~WS",
+        "%SYSTEMDRIVE%\\$GetCurrent",
+        "%SYSTEMDRIVE%\\Windows10Upgrade"
+      ],
+      "target": "itself", "risk": "medium", "autoSelect": false, "admin": true,
+      "processes": ["SetupHost", "Windows10UpgraderApp"]
+    },
+    {
+      "id": "sys-driver-installers", "group": "system", "category": "driver-installers",
+      "title": "Installer dei driver già estratti",
+      "description": "Pacchetti scaricati o estratti dagli installer di NVIDIA e AMD.",
+      "paths": ["%PROGRAMDATA%\\NVIDIA Corporation\\Downloader"],
+      "admin": true
+    },
+    {
+      "id": "sys-driver-installers-amd", "group": "system", "category": "driver-installers",
+      "title": "Installer dei driver già estratti",
+      "paths": ["%SYSTEMDRIVE%\\AMD"],
+      "target": "itself", "risk": "medium", "autoSelect": false, "admin": true
+    },
+
+    // ---- Apps ----
+    {
+      "id": "app-chromium-caches", "group": "apps", "category": "app-caches",
+      "title": "Cache delle app",
+      "description": "App basate su Chromium o Electron (Discord, Slack, Visual Studio Code, Notion…). Quelle aperte vengono saltate.",
+      "paths": [
+        "%APPDATA%\\*\\Cache", "%APPDATA%\\*\\Code Cache", "%APPDATA%\\*\\GPUCache",
+        "%APPDATA%\\*\\DawnCache", "%APPDATA%\\*\\DawnGraphiteCache", "%APPDATA%\\*\\DawnWebGPUCache",
+        "%LOCALAPPDATA%\\*\\Cache", "%LOCALAPPDATA%\\*\\Code Cache", "%LOCALAPPDATA%\\*\\GPUCache"
+      ],
+      "target": "itself",
+      "requireAnySibling": ["Local State", "Network Persistent State"],
+      "ownerComponent": 0
+    },
+    {
+      "id": "app-vscode", "group": "apps", "category": "app-caches",
+      "title": "Cache delle app",
+      "paths": ["%APPDATA%\\Code\\CachedData", "%APPDATA%\\Code\\CachedExtensionVSIXs", "%APPDATA%\\Code\\logs"],
+      "processes": ["Code"]
+    },
+    {
+      "id": "app-teams", "group": "apps", "category": "teams",
+      "title": "Cache di Microsoft Teams",
+      "paths": [
+        "%APPDATA%\\Microsoft\\Teams\\Cache", "%APPDATA%\\Microsoft\\Teams\\Code Cache",
+        "%APPDATA%\\Microsoft\\Teams\\GPUCache", "%APPDATA%\\Microsoft\\Teams\\Service Worker\\CacheStorage",
+        "%APPDATA%\\Microsoft\\Teams\\tmp",
+        "%LOCALAPPDATA%\\Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache\\Microsoft\\MSTeams\\EBWebView\\Default\\Cache",
+        "%LOCALAPPDATA%\\Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache\\Microsoft\\MSTeams\\EBWebView\\Default\\Code Cache",
+        "%LOCALAPPDATA%\\Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache\\Microsoft\\MSTeams\\EBWebView\\Default\\Service Worker\\CacheStorage"
+      ],
+      "target": "itself",
+      "processes": ["Teams", "ms-teams", "msteams"]
+    },
+    {
+      "id": "app-spotify", "group": "apps", "category": "spotify",
+      "title": "Cache di Spotify",
+      "description": "Brani salvati per l'ascolto in streaming. I brani scaricati per l'ascolto offline restano.",
+      "paths": [
+        "%LOCALAPPDATA%\\Spotify\\Storage", "%LOCALAPPDATA%\\Spotify\\Data",
+        "%LOCALAPPDATA%\\Packages\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0\\LocalCache\\Spotify\\Data"
+      ],
+      "processes": ["Spotify"]
+    },
+    {
+      "id": "app-steam", "group": "apps", "category": "steam",
+      "title": "Cache web di Steam",
+      "paths": ["%LOCALAPPDATA%\\Steam\\htmlcache"],
+      "processes": ["steam", "steamwebhelper"]
+    },
+    {
+      "id": "app-adobe-media", "group": "apps", "category": "adobe-media",
+      "title": "Cache multimediale di Adobe",
+      "description": "File di anteprima di Premiere Pro, After Effects e Media Encoder: si rigenerano.",
+      "paths": ["%APPDATA%\\Adobe\\Common\\Media Cache Files", "%APPDATA%\\Adobe\\Common\\Media Cache"],
+      "processes": ["Adobe Premiere Pro", "AfterFX", "Adobe Media Encoder"]
+    },
+    {
+      "id": "app-java", "group": "apps", "category": "java",
+      "title": "Cache di Java",
+      "paths": ["%LOCALAPPDATALOW%\\Sun\\Java\\Deployment\\cache"]
+    },
+
+    // ---- Developer tools ----
+    {
+      "id": "dev-npm", "group": "developer", "category": "npm",
+      "title": "Cache di npm",
+      "paths": ["%LOCALAPPDATA%\\npm-cache", "%APPDATA%\\npm-cache"],
+      "autoSelect": false, "processes": ["node"]
+    },
+    {
+      "id": "dev-yarn-pnpm", "group": "developer", "category": "yarn",
+      "title": "Cache di Yarn e pnpm",
+      "paths": ["%LOCALAPPDATA%\\Yarn\\Cache", "%LOCALAPPDATA%\\pnpm-cache"],
+      "autoSelect": false, "processes": ["node"]
+    },
+    {
+      "id": "dev-pip", "group": "developer", "category": "pip",
+      "title": "Cache di pip",
+      "paths": ["%LOCALAPPDATA%\\pip\\cache"],
+      "autoSelect": false
+    },
+    {
+      "id": "dev-nuget-http", "group": "developer", "category": "nuget",
+      "title": "Cache di NuGet",
+      "paths": ["%LOCALAPPDATA%\\NuGet\\v3-cache", "%LOCALAPPDATA%\\NuGet\\plugins-cache"],
+      "autoSelect": false, "processes": ["devenv", "MSBuild", "dotnet"]
+    },
+    {
+      "id": "dev-nuget-packages", "group": "developer", "category": "nuget-packages",
+      "title": "Pacchetti NuGet scaricati",
+      "description": "Vengono riscaricati alla prossima compilazione.",
+      "paths": ["%USERPROFILE%\\.nuget\\packages"],
+      "risk": "medium", "autoSelect": false, "processes": ["devenv", "MSBuild", "dotnet"]
+    },
+    {
+      "id": "dev-gradle", "group": "developer", "category": "gradle",
+      "title": "Cache di Gradle",
+      "paths": ["%USERPROFILE%\\.gradle\\caches"],
+      "autoSelect": false, "processes": ["java", "studio64"]
+    },
+    {
+      "id": "dev-maven", "group": "developer", "category": "maven",
+      "title": "Repository locale di Maven",
+      "paths": ["%USERPROFILE%\\.m2\\repository"],
+      "risk": "medium", "autoSelect": false, "processes": ["java"]
+    },
+    {
+      "id": "dev-go", "group": "developer", "category": "go",
+      "title": "Cache di compilazione di Go",
+      "paths": ["%LOCALAPPDATA%\\go-build"],
+      "autoSelect": false, "processes": ["go"]
+    },
+    {
+      "id": "dev-cargo", "group": "developer", "category": "cargo",
+      "title": "Cache di Cargo",
+      "paths": ["%USERPROFILE%\\.cargo\\registry\\cache"],
+      "autoSelect": false, "processes": ["cargo"]
+    },
+    {
+      "id": "dev-vs", "group": "developer", "category": "visualstudio",
+      "title": "Cache di Visual Studio",
+      "paths": ["%LOCALAPPDATA%\\Microsoft\\VisualStudio\\*\\ComponentModelCache"],
+      "target": "itself", "processes": ["devenv"]
+    },
+    {
+      "id": "dev-jetbrains", "group": "developer", "category": "jetbrains",
+      "title": "Cache degli IDE JetBrains",
+      "paths": ["%LOCALAPPDATA%\\JetBrains\\*\\caches", "%LOCALAPPDATA%\\Google\\AndroidStudio*\\caches"],
+      "target": "itself", "autoSelect": false,
+      "processes": ["idea64", "pycharm64", "rider64", "webstorm64", "phpstorm64", "clion64", "goland64", "datagrip64", "rubymine64", "studio64"]
+    },
+    {
+      "id": "dev-electron", "group": "developer", "category": "electron",
+      "title": "Cache di Electron e electron-builder",
+      "paths": ["%LOCALAPPDATA%\\electron\\Cache", "%LOCALAPPDATA%\\electron-builder\\Cache"],
+      "autoSelect": false
+    },
+    {
+      "id": "dev-playwright", "group": "developer", "category": "playwright",
+      "title": "Browser di Playwright",
+      "paths": ["%LOCALAPPDATA%\\ms-playwright"],
+      "risk": "medium", "autoSelect": false
+    },
+    {
+      "id": "dev-android", "group": "developer", "category": "android",
+      "title": "Cache di Android",
+      "paths": ["%USERPROFILE%\\.android\\cache"],
+      "autoSelect": false, "processes": ["studio64", "adb"]
+    }
+  ]
+}

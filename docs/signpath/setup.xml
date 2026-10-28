@@ -3,7 +3,7 @@
      signed files, uploaded by GitHub Actions as a zip with one file. -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
-    <pe-file path="WinCleaner-Setup-*.exe" product-name="WinCleaner">
+    <pe-file path="Tramontana-Setup-*.exe" product-name="Tramontana">
       <authenticode-sign/>
     </pe-file>
   </zip-file>

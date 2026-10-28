@@ -1,14 +1,14 @@
-# Specifiche (WinCleaner)
+# Specifiche (Tramontana)
 
-Riferimenti: le funzioni pubbliche di CCleaner Pro (Controllo integrità, Pulizia personalizzata, Registro, Aggiornamento software, Strumenti: disinstallazione, avvio, plugin dei browser, analisi disco, ricerca duplicati, ripristino configurazione, cancellazione unità) e le scelte di sicurezza di MacCleaner. Nessun codice, testo o regola di Piriform è stato usato: le regole sono scritte da zero partendo dalla documentazione pubblica di Windows e dei programmi.
+Riferimenti: le funzioni pubbliche di CCleaner Pro (Controllo integrità, Pulizia personalizzata, Registro, Aggiornamento software, Strumenti: disinstallazione, avvio, plugin dei browser, analisi disco, ricerca duplicati, ripristino configurazione, cancellazione unità) e le scelte di sicurezza di Maestrale. Nessun codice, testo o regola di Piriform è stato usato: le regole sono scritte da zero partendo dalla documentazione pubblica di Windows e dei programmi.
 
 ## Da Mac a Windows
-| MacCleaner | WinCleaner |
+| Maestrale | Tramontana |
 |---|---|
 | Cestino (`~/.Trash`) | Cestino per unità (`X:\$Recycle.Bin\<SID>`), coppie `$R`/`$I` versione 2 |
 | `PinnedFileSystem` (`openat`, `O_NOFOLLOW`, `unlinkat`, `renameatx_np`) | `NtCreateFile` relativo all'handle padre con `FILE_OPEN_REPARSE_POINT`, `FileDispositionInformationEx` (POSIX), `FileRenameInformationEx` senza sostituzione |
 | SIP | TrustedInstaller proprietario, Windows Resource Protection (`SfcIsFileProtected`) |
-| `mchelper` + password di macOS | `wchelper.exe` + UAC, named pipe solo utente, verifica SHA-256 |
+| `mshelper` + password di macOS | `trhelper.exe` + UAC, named pipe solo utente, verifica SHA-256 |
 | `AllowedRoots` | `Roots.User/System/SystemItems/UserFiles`, `LeftoverFinder.AllowedRoots/SystemRoots` |
 | Smart Care | Controllo integrità |
 | Launch agent / login item | Chiavi Run e cartelle Esecuzione automatica (`StartupApproved`), attività pianificate, servizi |
@@ -21,7 +21,7 @@ Riferimenti: le funzioni pubbliche di CCleaner Pro (Controllo integrità, Pulizi
 | XProtect, Gatekeeper | Defender, SmartScreen, Security Center (WMI) |
 
 ## Moduli
-- **Pulizia sistema** — `src/WinCleaner.Modules/Rules/system-junk.json` (regole Windows, sistema, app, sviluppo) + `BrowserCatalog` (cache per browser). Ogni regola: percorsi con token (`%LOCALAPPDATA%`…) e `*`, destinazione (contenuto o elemento), filtri di nome, età minima, rischio, preselezione, amministratore, processi che la sospendono, cartella sorella richiesta (per riconoscere le app Chromium/Electron), componente del percorso che nomina il programma proprietario.
+- **Pulizia sistema** — `src/Tramontana.Modules/Rules/system-junk.json` (regole Windows, sistema, app, sviluppo) + `BrowserCatalog` (cache per browser). Ogni regola: percorsi con token (`%LOCALAPPDATA%`…) e `*`, destinazione (contenuto o elemento), filtri di nome, età minima, rischio, preselezione, amministratore, processi che la sospendono, cartella sorella richiesta (per riconoscere le app Chromium/Electron), componente del percorso che nomina il programma proprietario.
 - **Cestini** — elenco dai file `$I`, svuotamento per elemento.
 - **Registro** — voci di disinstallazione senza programma (MSI: `MsiQueryProductState`), App Paths, SharedDLLs, MuiCache; solo file locali mancanti (le unità di rete o rimovibili scollegate non contano).
 - **Analisi disco** — `GetFileInformationByHandleEx(FileIdExtdDirectoryInfo)`, parallelo fino a 20 livelli, dimensione allocata, hard link contati una volta.

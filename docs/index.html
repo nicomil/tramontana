@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tramontana</title>
+<meta name="description" content="Tramontana: app Windows indipendente e open source in C# e WinUI 3 per pulizia, spazio, programmi, privacy, protezione e prestazioni del PC, senza abbonamento né telemetria.">
+<link rel="icon" href="assets/favicon.png">
+<meta property="og:title" content="Tramontana">
+<meta property="og:description" content="Pulizia, spazio, programmi, protezione e prestazioni per Windows. Open source, in C# e WinUI 3.">
+<meta property="og:image" content="https://nicomil.github.io/tramontana/shots/01-health.png">
+<style>
+:root {
+  --bg: #f7f9fc;
+  --bg-2: #eef2f8;
+  --card: #ffffff;
+  --text: #16202c;
+  --muted: #5f6b7a;
+  --line: #dde3ec;
+  --accent: #0f6cbd;
+  --accent-2: #3b8de0;
+  --accent-text: #0b4f8c;
+  --ok: #2f9e5b;
+  --warn: #b7791f;
+  --shadow: 0 10px 40px rgba(15, 60, 110, .10), 0 1px 3px rgba(0,0,0,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a;
+    --bg-2: #161c24;
+    --card: #1a212b;
+    --text: #e9eef5;
+    --muted: #9aa6b5;
+    --line: #273040;
+    --accent: #4da3f0;
+    --accent-2: #7cc0ff;
+    --accent-text: #8cc6ff;
+    --ok: #4cc27a;
+    --warn: #e0a84a;
+    --shadow: 0 10px 40px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --bg-2: #161c24; --card: #1a212b; --text: #e9eef5; --muted: #9aa6b5;
+  --line: #273040; --accent: #4da3f0; --accent-2: #7cc0ff; --accent-text: #8cc6ff; --ok: #4cc27a; --warn: #e0a84a;
+  --shadow: 0 10px 40px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+
+/* header */
+header.top {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: saturate(180%) blur(14px);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+header.top .wrap { display: flex; align-items: center; gap: 12px; height: 56px; }
+header.top img { width: 28px; height: 28px; border-radius: 7px; }
+header.top .name { font-weight: 700; letter-spacing: -.01em; }
+header.top nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
+header.top nav a { color: var(--muted); }
+header.top nav a:hover { color: var(--text); text-decoration: none; }
+@media (max-width: 640px) { header.top nav a:not(.gh) { display: none; } }
+
+/* hero */
+.hero { padding: 72px 0 40px; text-align: center; }
+.hero img.icon { width: 112px; height: 112px; border-radius: 26px; box-shadow: var(--shadow); }
+.hero h1 { font-size: clamp(36px, 6vw, 56px); letter-spacing: -.03em; margin: 24px 0 8px; line-height: 1.05; }
+.hero p.lead { font-size: clamp(17px, 2.2vw, 21px); color: var(--muted); max-width: 700px; margin: 0 auto 28px; }
+.cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 18px; border-radius: 999px; font-weight: 600; font-size: 15px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+}
+.btn:hover { text-decoration: none; border-color: var(--accent); }
+.btn.primary { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #fff; border-color: transparent; }
+.btn svg { width: 18px; height: 18px; }
+.hero .hint { color: var(--muted); font-size: 13px; margin: 12px 0 0; }
+.hero .hint b { color: var(--text); font-weight: 600; }
+.hero .shot { margin: 44px auto 0; max-width: 1000px; }
+.shot img { width: 100%; height: auto; display: block; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 40px 0 0; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; text-align: center; }
+.stat b { display: block; font-size: 26px; letter-spacing: -.02em; }
+.stat span { color: var(--muted); font-size: 13px; }
+
+/* sections */
+section { padding: 64px 0; }
+section + section { border-top: 1px solid var(--line); }
+h2 { font-size: clamp(26px, 3.6vw, 34px); letter-spacing: -.02em; margin: 0 0 8px; }
+.kicker { color: var(--accent-text); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+p.sub { color: var(--muted); max-width: 720px; margin: 0 0 32px; font-size: 17px; }
+
+.feature { display: grid; grid-template-columns: 1fr 1.4fr; gap: 36px; align-items: center; padding: 28px 0; }
+.feature.flip { grid-template-columns: 1.4fr 1fr; }
+.feature.flip .text { order: 2; }
+.feature h3 { font-size: 22px; margin: 0 0 8px; letter-spacing: -.01em; }
+.feature p { color: var(--muted); margin: 0 0 12px; }
+.feature ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.feature li { margin: 4px 0; }
+.feature li b { color: var(--text); font-weight: 600; }
+@media (max-width: 820px) {
+  .feature, .feature.flip { grid-template-columns: 1fr; }
+  .feature.flip .text { order: 0; }
+}
+
+/* grid of small cards */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+.card h4 { margin: 0 0 6px; font-size: 16px; }
+.card p { margin: 0; color: var(--muted); font-size: 14px; }
+.card .ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; margin-bottom: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); font-size: 18px; }
+
+/* architecture */
+.arch { display: grid; grid-template-columns: 1fr; gap: 10px; max-width: 760px; }
+.arch .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: baseline; }
+.arch .box code { font-family: Cascadia Code, Consolas, ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--accent-text); }
+.arch .box span { color: var(--muted); font-size: 14px; }
+.arch .box.app { border-color: var(--accent); }
+.arch .box.root { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+@media (max-width: 560px) { .arch .box { grid-template-columns: 1fr; } }
+
+/* security */
+.sec { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.sec .card h4::before { content: "✓ "; color: var(--ok); }
+
+/* install */
+.steps { counter-reset: step; display: grid; gap: 12px; max-width: 760px; margin: 0 0 24px; padding: 0; list-style: none; }
+.steps li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 14px 56px; position: relative; color: var(--muted); }
+.steps li b { color: var(--text); }
+.steps li::before { counter-increment: step; content: counter(step); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; background: var(--accent); }
+.notice { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--card)); padding: 12px 16px; border-radius: 10px; color: var(--muted); font-size: 15px; max-width: 760px; margin: 0 0 24px; }
+.notice b { color: var(--text); }
+
+/* code */
+pre { background: #161c24; color: #e9eef5; border-radius: 12px; padding: 16px 18px; overflow: auto; font-size: 13.5px; line-height: 1.5; border: 1px solid #273040; }
+code { font-family: Cascadia Code, Consolas, ui-monospace, SFMono-Regular, Menlo, monospace; }
+p code, li code { background: var(--bg-2); padding: 1px 6px; border-radius: 6px; font-size: .92em; }
+
+/* gallery */
+.gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.gallery figure { margin: 0; min-width: 0; }
+.gallery img { width: 100%; max-width: 100%; height: auto; display: block; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); }
+.gallery figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; }
+img { max-width: 100%; height: auto; }
+
+footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+/* lightbox */
+dialog.lb { border: 0; padding: 0; background: transparent; max-width: min(96vw, 1600px); width: auto; }
+dialog.lb::backdrop { background: rgba(0,0,0,.78); backdrop-filter: blur(6px); }
+dialog.lb img { width: 100%; height: auto; max-height: 92vh; object-fit: contain; border-radius: 10px; }
+.shot a, .gallery a { cursor: zoom-in; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <img src="assets/icon.png" alt="">
+    <span class="name">Tramontana</span>
+    <nav>
+      <a href="#funzioni">Funzioni</a>
+      <a href="#protezione">Protezione</a>
+      <a href="#architettura">Com'è fatto</a>
+      <a href="#sicurezza">Sicurezza</a>
+      <a href="#installazione">Installazione</a>
+      <a class="gh" href="https://github.com/nicomil/tramontana">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <img class="icon" src="assets/icon.png" alt="Icona di Tramontana">
+    <h1>Il PC pulito, senza abbonamento.</h1>
+    <p class="lead">La tramontana è il vento del nord che spazza via le nuvole e lascia il cielo terso. Tramontana è un'app Windows indipendente e open source, scritta in C# e WinUI 3, che riunisce in una sola finestra pulizia, spazio, programmi, privacy, protezione e prestazioni del PC. Ogni operazione parte da un clic, si vede prima di essere eseguita e finisce nel registro delle operazioni.</p>
+    <div class="cta">
+      <a class="btn primary" id="download" href="https://github.com/nicomil/tramontana/releases">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <span id="download-label">Scarica il setup</span>
+      </a>
+      <a class="btn" href="https://github.com/nicomil/tramontana">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.7 5.5.7 11.8c0 5 3.2 9.2 7.7 10.7.6.1.8-.2.8-.5v-2c-3.1.7-3.8-1.3-3.8-1.3-.5-1.3-1.2-1.7-1.2-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 1.7 2.6 1.2 3.3.9.1-.7.4-1.2.7-1.5-2.5-.3-5.1-1.3-5.1-5.6 0-1.2.4-2.2 1.2-3-.1-.3-.5-1.5.1-3 0 0 1-.3 3.1 1.2a10.7 10.7 0 0 1 5.7 0c2.1-1.5 3.1-1.2 3.1-1.2.6 1.5.2 2.7.1 3 .8.8 1.2 1.8 1.2 3 0 4.3-2.6 5.3-5.1 5.6.4.4.8 1.1.8 2.1v3.1c0 .3.2.6.8.5 4.5-1.5 7.7-5.7 7.7-10.7C23.3 5.5 18.3.5 12 .5z"/></svg>
+        Codice su GitHub
+      </a>
+      <a class="btn" href="#installazione">Compila da sorgente</a>
+    </div>
+    <p class="hint" id="download-hint">Windows 10 (2004) o Windows 11, x64 · installer di circa 100 MB, non serve .NET</p>
+    <div class="shot">
+      <a href="shots/01-health.png" data-lb><img src="shots/01-health.png" alt="Tramontana, schermata Controllo integrità: pulizia, protezione, aggiornamenti, avvio automatico e disco riassunti in una pagina"></a>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>18</b><span>pagine nella barra laterale</span></div>
+      <div class="stat"><b>17</b><span>controlli di Protezione</span></div>
+      <div class="stat"><b>157</b><span>test automatici</span></div>
+      <div class="stat"><b>~15k</b><span>righe di C#</span></div>
+      <div class="stat"><b>MIT</b><span>licenza, codice su GitHub</span></div>
+      <div class="stat"><b>0</b><span>telemetria, abbonamenti, servizi in background</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="funzioni">
+  <div class="wrap">
+    <div class="kicker">Funzioni</div>
+    <h2>Pulizia, file, programmi, protezione, prestazioni: pagina per pagina.</h2>
+    <p class="sub">La barra laterale è divisa in cinque aree. Ogni pagina mostra prima cosa ha trovato, con dimensione, rischio e preselezione, e agisce solo dopo una conferma. Il Controllo integrità le riassume tutte in un clic.</p>
+
+    <div class="feature">
+      <div class="text">
+        <h3>Pulizia sistema</h3>
+        <p>Temporanei, cache di miniature, icone e shader, segnalazioni errori, dump, log, Windows Update, Prefetch, avanzi di installazione di Windows, cache dei browser, delle app Electron, di Teams, Spotify, Steam, Adobe e degli strumenti di sviluppo.</p>
+        <ul>
+          <li><b>Programmi aperti esclusi</b>: le cache di un browser o di un'app in esecuzione restano, e il controllo si ripete prima di pulire.</li>
+          <li><b>Rischio alto mai preselezionato</b>: le cartelle di sistema si attivano a mano e passano dall'helper.</li>
+          <li><b>Cestino di default</b>, modalità Prova, eliminazione diretta solo su scelta esplicita.</li>
+        </ul>
+      </div>
+      <div class="shot"><a href="shots/02-system-junk.png" data-lb><img src="shots/02-system-junk.png" alt="Pulizia sistema con le categorie di file temporanei e cache raggruppate per area"></a></div>
+    </div>
+
+    <div class="feature flip">
+      <div class="text">
+        <h3>Analisi disco</h3>
+        <p>La mappa del disco cartella per cartella, veloce anche su centinaia di migliaia di file: handle e ID dei file, letti in parallelo.</p>
+        <ul>
+          <li><b>Qualunque unità o cartella</b> a scelta, con dimensione allocata e hard link contati una volta.</li>
+          <li>Completano l'area File: <b>File grandi e vecchi</b>, <b>Duplicati</b>, <b>Immagini simili</b>, <b>Installer</b> già usati.</li>
+          <li>I file solo-cloud di OneDrive non vengono mai letti: leggerli li scaricherebbe.</li>
+        </ul>
+      </div>
+      <div class="shot"><a href="shots/05-space-lens.png" data-lb><img src="shots/05-space-lens.png" alt="Analisi disco: mappa ad albero dello spazio occupato sull'unità C:"></a></div>
+    </div>
+
+    <div class="feature">
+      <div class="text">
+        <h3>Disinstallazione e avanzi</h3>
+        <p>Programmi classici e app dello Store, con ultimo uso e dimensione. La disinstallazione usa il programma del produttore, poi cerca gli avanzi con nomi esatti: cartella rimasta, voce in App installate, collegamenti rotti.</p>
+        <ul>
+          <li><b>Mai dentro la cartella di un altro programma</b>: gli avanzi si cercano per nome di programma, cartella ed editore.</li>
+          <li><b>Avanzi di programmi rimossi</b>: cartelle che nessun programma installato o processo reclama più.</li>
+        </ul>
+      </div>
+      <div class="shot"><a href="shots/10-programs.png" data-lb><img src="shots/10-programs.png" alt="Disinstallazione: elenco dei programmi installati con dimensione e ultimo uso"></a></div>
+    </div>
+
+    <div class="feature flip">
+      <div class="text">
+        <h3>Aggiornamenti con winget</h3>
+        <p>Le versioni nuove dei programmi installati arrivano da Gestione pacchetti di Windows, che verifica l'impronta di ogni installer. Si installano uno alla volta, solo quando lo chiedi.</p>
+        <ul>
+          <li><b>Programma aperto?</b> Te lo dice prima di scaricare, invece di fallire dopo.</li>
+          <li><b>Pacchetti dello Store</b> che non si applicano a un'installazione classica: riprova dalla fonte giusta e spiega il motivo.</li>
+        </ul>
+      </div>
+      <div class="shot"><a href="shots/11-updates.png" data-lb><img src="shots/11-updates.png" alt="Aggiornamenti disponibili da winget con versione installata e nuova"></a></div>
+    </div>
+
+    <div class="feature">
+      <div class="text">
+        <h3>Avvio automatico e manutenzione</h3>
+        <p>Programmi all'avvio come in Gestione attività, attività pianificate e servizi non Microsoft, con firma verificata senza rete. Disattivare è sempre reversibile.</p>
+        <ul>
+          <li><b>Manutenzione</b>: DNS, memoria, cache delle icone, Esplora risorse, Pulizia di Windows, DISM, SFC, Ottimizzazione recapito, ottimizzazione unità, punto di ripristino, cancellazione dello spazio libero.</li>
+          <li><b>Ogni operazione dice cosa ha fatto</b>, con il risultato dello strumento di Windows.</li>
+        </ul>
+      </div>
+      <div class="shot"><a href="shots/17-startup.png" data-lb><img src="shots/17-startup.png" alt="Avvio automatico: programmi, attività pianificate e servizi con stato e firma"></a></div>
+    </div>
+
+    <div class="feature flip">
+      <div class="text">
+        <h3>Controllo integrità</h3>
+        <p>Un clic che controlla pulizia, Cestini, protezione, aggiornamenti e avvio automatico in parallelo e riassume tutto in una pagina.</p>
+        <ul>
+          <li><b>Pulisci ora</b> rimuove solo i file preselezionati a livello utente, dopo conferma.</li>
+          <li>Analisi pianificata con notifica, icona nell'area di notifica con CPU, memoria, disco e batteria.</li>
+        </ul>
+      </div>
+      <div class="shot"><a href="shots/01-health.png" data-lb><img src="shots/01-health.png" alt="Controllo integrità: riepilogo delle cinque aree"></a></div>
+    </div>
+  </div>
+</section>
+
+<section id="protezione">
+  <div class="wrap">
+    <div class="kicker">Protezione</div>
+    <h2>Diciassette controlli, zero download.</h2>
+    <p class="sub">La scansione standard non chiede mai l'amministratore. Ogni avviso ha le sue evidenze e la voce «nuovo dall'ultimo controllo». Il controllo approfondito usa l'helper in sola lettura; i file sospetti finiscono in quarantena, con ripristino.</p>
+    <div class="shot" style="margin-bottom:28px"><a href="shots/14-protection.png" data-lb><img src="shots/14-protection.png" alt="Protezione: risultati con gravità, categoria ed evidenze"></a></div>
+    <div class="grid">
+      <div class="card"><div class="ic">⏻</div><h4>Persistenza</h4><p>Run, attività anche nascoste, servizi e driver, Winlogon, IFEO, AppInit, WMI, BITS, COM, Active Setup, LSA, shell, provider, profili PowerShell, Office.</p></div>
+      <div class="card"><div class="ic">🛡</div><h4>Defender e difese</h4><p>Criteri, esclusioni, minacce recenti, regole ASR; firewall, UAC, SmartScreen, LSASS, BitLocker, SMBv1, accesso remoto, account, macro.</p></div>
+      <div class="card"><div class="ic">🌐</div><h4>Browser e rete</h4><p>Estensioni, criteri forzati, dirottamenti; hosts, proxy, DNS, regole del firewall; certificati radice.</p></div>
+      <div class="card"><div class="ic">⌁</div><h4>Processi</h4><p>CPU sostenuta, nomi di sistema fuori posto, LOLBin, iniezioni, connessioni. La pagina Attività li mostra in tempo reale con firma e giudizio.</p></div>
+      <div class="card"><div class="ic">Y</div><h4>Firme, hash e YARA</h4><p>LOLDrivers, hash MalwareBazaar e regole YARA li aggiungi tu dalle Impostazioni, con lo SHA-256 da confrontare e la conferma da amministratore: l'app non scarica nulla.</p></div>
+      <div class="card"><div class="ic">🔒</div><h4>Privacy e quarantena</h4><p>Cronologia, cookie, moduli e sessioni dei browser, file recenti, Appunti, reti Wi‑Fi, permessi, con copia di sicurezza prima di cancellare. Quarantena con ripristino.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="architettura">
+  <div class="wrap">
+    <div class="kicker">Com'è fatto</div>
+    <h2>Un core piccolo, un modulo per funzione, un solo eseguibile che tocca il sistema.</h2>
+    <p class="sub">Soluzione .NET 10 con due librerie e tre eseguibili. Il file system si usa tramite handle, mai per percorso.</p>
+    <div class="arch">
+      <div class="box app"><code>Tramontana.exe</code><span>WinUI 3, Windows 10 e 11. Barra laterale, elenchi, Controllo integrità, area di notifica, impostazioni.</span></div>
+      <div class="box"><code>Tramontana.Core</code><span>File system tramite handle (<code>NtCreateFile</code> relativo), rimozione sicura, Cestino con i file <code>$I</code> di Explorer, regole, registro di sistema, firme digitali, log delle operazioni.</span></div>
+      <div class="box"><code>Tramontana.Modules</code><span>Un modulo per funzione: pulizia, file, programmi, privacy, avvio, manutenzione, protezione, registro.</span></div>
+      <div class="box root"><code>trhelper.exe</code><span>L'unica parte che gira come amministratore, una richiesta UAC per sessione. Named pipe solo dell'utente, verifica incrociata di hash e firma con l'app, elenco chiuso di operazioni ricontrollate da sé.</span></div>
+      <div class="box"><code>trcli.exe</code><span>Le stesse scansioni dal terminale, in sola lettura.</span></div>
+    </div>
+    <p class="sub" style="margin-top:28px">Le scelte di progetto sono in <a href="https://github.com/nicomil/tramontana/tree/main/docs/spec"><code>docs/spec/</code></a>; la revisione di sicurezza completa, con ogni finding e la sua mitigazione, in <a href="https://github.com/nicomil/tramontana/blob/main/docs/security-review.md"><code>docs/security-review.md</code></a>. Le regole sono scritte sulla conoscenza pubblica di Windows.</p>
+  </div>
+</section>
+
+<section id="sicurezza">
+  <div class="wrap">
+    <div class="kicker">Sicurezza</div>
+    <h2>Progettato per non perdere niente.</h2>
+    <p class="sub">Un'app che cancella file deve sbagliare dalla parte giusta. Queste regole valgono in tutte le pagine.</p>
+    <div class="sec">
+      <div class="card"><h4>Cestino di default</h4><p>I file vanno nel Cestino e si ripristinano da Esplora risorse. La modalità Prova non rimuove nulla. Nel Cestino un elemento esistente non viene mai sostituito.</p></div>
+      <div class="card"><h4>Nessuna operazione per percorso</h4><p>Ogni cartella si apre relativamente alla precedente senza seguire junction o link: se una cartella viene scambiata durante l'operazione, l'operazione fallisce invece di finire altrove.</p></div>
+      <div class="card"><h4>File di Windows protetti</h4><p>I file di TrustedInstaller e quelli coperti da Windows Resource Protection vengono rifiutati; i file in uso restano al loro posto.</p></div>
+      <div class="card"><h4>Registro con backup</h4><p>Si tocca solo un elenco chiuso di chiavi, mai <code>SYSTEM</code>, <code>Classes</code> o <code>Policies</code>. Ogni chiave viene esportata in un file <code>.reg</code> prima di toglierla.</p></div>
+      <div class="card"><h4>Copia prima di cancellare</h4><p>I database dei browser sono copiati con SQLite (<code>VACUUM INTO</code>), riletti e messi nel Cestino prima di toccare l'originale. Le password non vengono mai lette.</p></div>
+      <div class="card"><h4>Tutto è dato, niente è codice</h4><p>Gli strumenti di Windows partono con percorso assoluto, argomenti separati e ambiente ripulito. Output, regole e manifest vengono parsati con limiti e mai eseguiti.</p></div>
+      <div class="card"><h4>Helper verificato in entrambi i sensi</h4><p>L'app controlla l'hash dell'helper; l'helper controlla nome, cartella, utente, hash e firma dell'app che lo chiama, e lavora solo in cartelle create per soli amministratori.</p></div>
+      <div class="card"><h4>Log di ogni operazione</h4><p>Riuscite o rifiutate, tutte le operazioni finiscono in <code>%LOCALAPPDATA%\Tramontana\Logs\operations.log</code>; quelle dell'helper in <code>C:\ProgramData\Tramontana</code>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="installazione">
+  <div class="wrap">
+    <div class="kicker">Installazione</div>
+    <h2>Scarica il setup, o compila da sorgente.</h2>
+    <ol class="steps">
+      <li><b>Scarica</b> <a id="download-2" href="https://github.com/nicomil/tramontana/releases">l'installer dell'ultima versione</a> dalla pagina Releases: un file <code>Tramontana-Setup-&lt;versione&gt;-x64.exe</code> di circa 100 MB. Accanto c'è <code>SHA256SUMS.txt</code> per verificarlo.</li>
+      <li><b>Apri il setup</b>: procedura guidata classica, chiede l'amministratore, installa in <code>C:\Program Files\Tramontana</code> e aggiunge Tramontana al menu Start e ad App installate. Non serve installare .NET: l'app contiene tutto.</li>
+      <li><b>Per aggiornare</b> basta lanciare il setup nuovo sopra quello vecchio, anche sopra WinCleaner (il nome dell'app fino alla 0.2): la vecchia installazione viene rimossa e i dati spostati nelle nuove cartelle al primo avvio. <b>Per toglierlo</b>: Impostazioni → App → Tramontana → Disinstalla. I dati in <code>%LOCALAPPDATA%\Tramontana</code> restano.</li>
+    </ol>
+    <div class="notice" id="smartscreen"><b>SmartScreen al primo avvio.</b> Le release sono firmate con il certificato di SignPath Foundation dopo approvazione manuale; finché una release è marcata «pre-release» il setup non è ancora firmato e Windows può mostrare «Windows ha protetto il PC»: <b>Ulteriori informazioni</b> → <b>Esegui comunque</b>, dopo aver confrontato lo SHA-256 con <code>SHA256SUMS.txt</code>.</div>
+    <p class="sub"><b>Da sorgente</b>: serve solo .NET 10 SDK (<code>winget install Microsoft.DotNet.SDK.10</code>), Visual Studio non serve. Inno Setup 6 solo per costruire l'installer.</p>
+<pre><code>git clone https://github.com/nicomil/tramontana.git
+cd tramontana
+
+# test (157, girano su Windows)
+dotnet test tests\Tramontana.Tests -p:Platform=x64
+
+# cartella pronta in artifacts\Tramontana-x64, firmata con un certificato locale
+powershell -ExecutionPolicy Bypass -File scripts\publish.ps1
+
+# installazione in Program Files, con voce in App installate
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+
+# scansioni dal terminale, in sola lettura
+trcli scan system-junk --items
+trcli protection --report</code></pre>
+    <p class="sub" style="margin-top:24px">Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>. La <a href="https://github.com/nicomil/tramontana/blob/main/docs/code-signing-policy.md">code signing policy</a> descrive come nascono le release, chi le approva e cosa fa l'app (nessun dato viene inviato).</p>
+  </div>
+</section>
+
+<section id="galleria">
+  <div class="wrap">
+    <div class="kicker">Galleria</div>
+    <h2>Le altre schermate.</h2>
+    <div class="gallery">
+      <figure><a href="shots/13-privacy.png" data-lb><img src="shots/13-privacy.png" alt="Privacy"></a><figcaption>Privacy: browser, file recenti, Appunti, reti Wi‑Fi e permessi delle app.</figcaption></figure>
+      <figure><a href="shots/15-activity.png" data-lb><img src="shots/15-activity.png" alt="Attività"></a><figcaption>Attività: processi in tempo reale con CPU, memoria, disco, connessioni e firma.</figcaption></figure>
+      <figure><a href="shots/08-similar-images.png" data-lb><img src="shots/08-similar-images.png" alt="Immagini simili"></a><figcaption>Immagini simili: la stessa foto salvata due volte, copie ridimensionate, scatti a raffica. Resta sempre almeno una copia.</figcaption></figure>
+      <figure><a href="shots/18-maintenance.png" data-lb><img src="shots/18-maintenance.png" alt="Manutenzione"></a><figcaption>Manutenzione: gli strumenti di Windows, uno alla volta, con il risultato.</figcaption></figure>
+      <figure><a href="shots/04-registry.png" data-lb><img src="shots/04-registry.png" alt="Registro"></a><figcaption>Registro: solo voci verso programmi e file che non esistono più, con un file .reg prima di ogni modifica.</figcaption></figure>
+      <figure><a href="shots/19-settings.png" data-lb><img src="shots/19-settings.png" alt="Impostazioni"></a><figcaption>Impostazioni: modalità predefinita, analisi pianificata, area di notifica, regole YARA e liste di hash.</figcaption></figure>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Tramontana · progettato e sviluppato da Nicola Milella</span>
+    <span>C# · WinUI 3 · .NET 10 · Windows 10/11 · licenza <a href="https://github.com/nicomil/tramontana/blob/main/LICENSE">MIT</a></span>
+    <a href="https://github.com/nicomil/tramontana">github.com/nicomil/tramontana</a>
+  </div>
+</footer>
+
+<dialog class="lb" id="lb"><img alt=""></dialog>
+<script>
+(function () {
+  var lb = document.getElementById('lb'), img = lb.querySelector('img');
+  if (lb.showModal) {
+    document.querySelectorAll('a[data-lb]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        img.src = a.getAttribute('href');
+        img.alt = a.querySelector('img') ? a.querySelector('img').alt : '';
+        lb.showModal();
+      });
+    });
+    lb.addEventListener('click', function () { lb.close(); });
+  }
+
+  // The download button points straight at the setup of the newest release (pre-releases
+  // included, since unsigned builds are published as such). Without the API it stays on Releases.
+  fetch('https://api.github.com/repos/nicomil/tramontana/releases?per_page=5', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (releases) {
+      var release = releases.filter(function (r) { return !r.draft; })[0];
+      if (!release) return;
+      var setup = (release.assets || []).filter(function (a) { return /^Tramontana-Setup-.*-x64\.exe$/.test(a.name); })[0];
+      if (!setup) return;
+      ['download', 'download-2'].forEach(function (id) { document.getElementById(id).href = setup.browser_download_url; });
+      document.getElementById('download-label').textContent = 'Scarica Tramontana ' + release.tag_name.replace(/^v/, '');
+      var mb = Math.round(setup.size / 1048576);
+      document.getElementById('download-hint').innerHTML =
+        'Windows 10 (2004) o Windows 11, x64 · <b>' + setup.name + '</b> · ' + mb + ' MB · non serve .NET' +
+        (release.prerelease ? ' · build non ancora firmata (vedi SmartScreen sotto)' : ' · firmato da SignPath Foundation');
+    })
+    .catch(function () {});
+})();
+</script>
+</body>
+</html>

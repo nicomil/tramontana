@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <RootNamespace>WinCleaner.Core</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <InternalsVisibleTo Include="WinCleaner.Tests" />
-    <InternalsVisibleTo Include="WinCleaner.Modules" />
-  </ItemGroup>
-</Project>

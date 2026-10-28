@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Tramontana.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tramontana.Tests" />
+    <InternalsVisibleTo Include="Tramontana.Modules" />
+  </ItemGroup>
+</Project>

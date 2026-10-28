@@ -9,8 +9,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Platforms>x64;ARM64</Platforms>
     <Authors>Nicola Milella</Authors>
-    <Product>WinCleaner</Product>
-    <Version>0.2.0</Version>
+    <Product>Tramontana</Product>
+    <Version>0.3.0</Version>
     <Deterministic>true</Deterministic>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Reproducible, tamper-evident restores: packages.lock.json per project, checked by publish.ps1 in locked mode. -->

@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Tramontana.Core/Tramontana.Core.csproj" />
+    <Project Path="src/Tramontana.Modules/Tramontana.Modules.csproj" />
+    <Project Path="src/Tramontana.Cli/Tramontana.Cli.csproj" />
+    <Project Path="src/Tramontana.Helper/Tramontana.Helper.csproj" />
+    <Project Path="src/Tramontana.App/Tramontana.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tramontana.Tests/Tramontana.Tests.csproj" />
+  </Folder>
+</Solution>

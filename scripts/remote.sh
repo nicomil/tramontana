@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Copies the working tree to the Windows build machine and runs a command there.
 #   scripts/remote.sh dotnet test
-#   scripts/remote.sh --no-sync dotnet run --project src/WinCleaner.Cli -- junk
-# The host comes from WC_HOST (default: blackframe-minipc, see ~/.ssh/config).
+#   scripts/remote.sh --no-sync dotnet run --project src/Tramontana.Cli -- junk
+# The host comes from TR_HOST (default: blackframe-minipc, see ~/.ssh/config).
 set -euo pipefail
-HOST=${WC_HOST:-blackframe-minipc}
-STAGE='C:\dev\wcstage'
-WORK='C:\dev\wincleaner'
+HOST=${TR_HOST:-blackframe-minipc}
+STAGE='C:\dev\trstage'
+WORK='C:\dev\tramontana'
 SSH=(ssh -o BatchMode=yes -o LogLevel=ERROR "$HOST")
 cd "$(dirname "$0")/.."
 

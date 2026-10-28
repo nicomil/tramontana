@@ -9,7 +9,7 @@
 > - Gli oggetti COM ridefiniti nel profilo con DLL firmata (installazioni per utente, es. Python) sono avvisi; `TreatAs` conta solo verso librerie fuori dai programmi.
 > - La quarantena blocca i figli prima dei genitori (il contrario per sbloccare) e scrive lo stream `Zone.Identifier` prima dell'attributo nascosto.
 
-Gemello del piano di MacCleaner (`../../maccleaner/docs/spec/protection-upgrade.md`), riscritto per Windows. Obiettivo: fare meglio di "apro Gestione attività, guardo i processi sospetti, lancio CCleaner". Le quattro domande sono le stesse:
+Gemello del piano di Maestrale (`../../maestrale/docs/spec/protection-upgrade.md`), riscritto per Windows. Obiettivo: fare meglio di "apro Gestione attività, guardo i processi sospetti, lancio CCleaner". Le quattro domande sono le stesse:
 
 1. **Cosa si avvia da solo** su questo PC, e da quando?
 2. **Cosa sta girando adesso**, e chi consuma CPU, RAM, rete e disco in modo anomalo?
@@ -25,11 +25,11 @@ Ma Windows parte da una posizione peggiore, e il piano lo tiene presente:
 - **Impostazioni predefinite deboli**: estensioni dei file nascoste (`fattura.pdf.exe`), AutoPlay, SMBv1 sui PC vecchi, WDigest, nessun BitLocker, utente amministratore senza password separata.
 - **Si può fare di più senza privilegi**, ma le cose importanti (esclusioni di Defender, sottoscrizioni WMI, processi di altri utenti, moduli caricati, log di sicurezza) servono l'helper elevato. Una sola richiesta UAC per sessione, come oggi.
 
-Filosofia invariata: niente preselezioni sugli elementi a rischio, ogni segnalazione spiega il motivo e mostra l'evidenza, nessuna rimozione senza conferma, operazioni di sistema solo tramite l'insieme chiuso di `wchelper`.
+Filosofia invariata: niente preselezioni sugli elementi a rischio, ogni segnalazione spiega il motivo e mostra l'evidenza, nessuna rimozione senza conferma, operazioni di sistema solo tramite l'insieme chiuso di `trhelper`.
 
 ## Stato attuale (M4/M5)
 
-`ProtectionScanner` (statico, `src/WinCleaner.Modules/Protection/`) copre:
+`ProtectionScanner` (statico, `src/Tramontana.Modules/Protection/`) copre:
 
 | Area | Cosa c'è | Cosa manca |
 |---|---|---|
@@ -46,7 +46,7 @@ Filosofia invariata: niente preselezioni sugli elementi a rischio, ogni segnalaz
 
 - **Ogni controllo è un'unità** (`IProtectionCheck`): nome, categoria, requisito (nessuno / amministratore) e `Run(CheckContext)`. Lo scanner è la somma dei controlli e li esegue in parallelo con timeout.
 - **`Finding` esteso**: categoria, gravità, titolo, percorso o chiave di registro, motivi, *evidenze* grezze (valore del registro, riga di comando, riga di `netstat`), azione consigliata (disattiva avvio, Cestino, quarantena, elimina valore, apri impostazioni, termina processo, analizza con Defender), `FirstSeen`, `IsNew`, editore della firma.
-- **Baseline e differenza**: istantanea JSON in `%LOCALAPPDATA%\WinCleaner\Protection\last-scan.json`; "nuovo dall'ultimo controllo" è il segnale più utile sul PC che "fa sempre casini".
+- **Baseline e differenza**: istantanea JSON in `%LOCALAPPDATA%\Tramontana\Protection\last-scan.json`; "nuovo dall'ultimo controllo" è il segnale più utile sul PC che "fa sempre casini".
 - **Tutto ciò che si legge è dato ostile**: valori del registro, righe di comando, manifest, script, output di comandi, log. Parsati con limiti, mai eseguiti, mai interpolati in una riga di comando.
 - **Privilegi minimi**: la scansione standard non chiede UAC. Il "Controllo approfondito" usa una sola operazione dell'helper di sola lettura (`CollectSystemEvidence`) con un elenco fisso di letture, senza argomenti dall'esterno. Le azioni privilegiate sono operazioni dedicate, tipizzate, ricontrollate dall'helper.
 - **Falsi positivi gestiti**: "Ignora", editori fidati (nome del soggetto del certificato), allowlist di strumenti di sviluppo, livello "Informazioni" nascosto di default.
@@ -60,7 +60,7 @@ Filosofia invariata: niente preselezioni sugli elementi a rischio, ogni segnalaz
 - `ProtectionBaseline` con `FirstSeen`/`IsNew`, dimenticando gli id assenti da 90 giorni.
 - `ProtectionReport` (Markdown) con difese, riepilogo, finding per categoria con evidenze, processi più attivi.
 - Spostare i controlli esistenti nelle unità: `DefencesCheck`, `StartupCheck`, `BrowserExtensionsCheck`, `NetworkConfigCheck`, `DevicesCheck`. Fixture per ognuno (registro finto con chiavi Run, attività finte, `Preferences` di Chromium in cartella temporanea).
-- `wccli protection` stampa categoria, evidenze e novità; `wccli posture`, `wccli processes`, `wccli signatures` nelle fasi seguenti.
+- `trcli protection` stampa categoria, evidenze e novità; `trcli posture`, `trcli processes`, `trcli signatures` nelle fasi seguenti.
 
 ### Fase 1: postura delle difese (costo basso, valore alto)
 
@@ -132,7 +132,7 @@ Nuova pagina **Attività**, campionata ogni 2 secondi finché è aperta, più tr
 
 ### Fase 4: azioni, quarantena, rapporto, automazione
 
-- **Quarantena** come alternativa al Cestino: `%LOCALAPPDATA%\WinCleaner\Quarantine\<id>\` con `manifest.json`, spostamento tramite `PinnedFileSystem` (rinomina dell'handle, mai per percorso), DACL ridotta al solo utente in lettura (nessun `Execute`), attributi `Hidden`, stream `Zone.Identifier` con `ZoneId=3` così SmartScreen blocca anche una copia. File di sistema: operazione `Quarantine` dell'helper verso `C:\ProgramData\WinCleaner\Quarantine` con DACL amministratori/SYSTEM. `RestoreQuarantined`, `DeleteQuarantined`. Pagina "Quarantena".
+- **Quarantena** come alternativa al Cestino: `%LOCALAPPDATA%\Tramontana\Quarantine\<id>\` con `manifest.json`, spostamento tramite `PinnedFileSystem` (rinomina dell'handle, mai per percorso), DACL ridotta al solo utente in lettura (nessun `Execute`), attributi `Hidden`, stream `Zone.Identifier` con `ZoneId=3` così SmartScreen blocca anche una copia. File di sistema: operazione `Quarantine` dell'helper verso `C:\ProgramData\Tramontana\Quarantine` con DACL amministratori/SYSTEM. `RestoreQuarantined`, `DeleteQuarantined`. Pagina "Quarantena".
 - **Sequenza di rimozione sicura**: termina il processo (e i figli) → disattiva o elimina l'elemento di avvio (attività, servizio, Run, WMI) → verifica che non sia ricomparso → quarantena del file → nuova scansione. Si ferma al primo passo che fallisce.
 - **Rimozioni di registro mirate** (helper, con backup `.reg`): `RestoreWinlogonDefaults`, `RemoveIfeoDebugger(exe)`, `ClearAppInitDlls`, `RemoveWmiSubscription(nome)`, `RemoveComHijack(clsid)`, `RemoveExtensionForceList(id)`, `RemoveDefenderExclusion`. Ogni operazione ha la sua allowlist esatta: l'elenco "mai la chiave Microsoft" resta per tutto il resto.
 - **Analisi Defender mirata**: dopo la scansione, i file `danger`/`warning` vengono passati a `MpCmdRun -Scan -ScanType 3 -File` (gira come utente); l'esito finisce nelle evidenze. Cronologia minacce in Protezione.
@@ -143,7 +143,7 @@ Nuova pagina **Attività**, campionata ogni 2 secondi finché è aperta, più tr
 
 - **LOLDrivers** (`loldrivers.io`, JSON pubblico, licenza aperta): hash SHA-256 dei driver vulnerabili o malevoli; confrontati con i driver installati (`DriverStore`, `System32\drivers`) e caricati. Scaricato dall'utente dalle Impostazioni, con SHA-256 mostrato. È la fonte più preziosa su Windows: i "BYOVD" spengono Defender.
 - **MalwareBazaar** CSV (tag `exe`, `dll`, `msi`): hash dei file candidati (eseguibili e script in Download, Desktop, `%TEMP%`, `%APPDATA%`, `ProgramData`, cartelle di avvio, programmi degli elementi di avvio, moduli caricati).
-- **YARA**: `dnYara` (NuGet, include `libyara` nativa per x64; per ARM64 compilare `libyara` come progetto C in `src/WinCleaner.Yara` con lo stesso approccio di MacCleaner) oppure, come ripiego, `yara64.exe` dalla release ufficiale copiata accanto all'app. Regole: YARA-Forge "core" filtrato Windows, regole di base scritte da noi (dropper PowerShell, miner, reverse shell, stealer di browser). Cache per `percorso+dimensione+data`. Ambito limitato ai posti dove il malware vive; limite 50 MB; mai i file solo-cloud di OneDrive.
+- **YARA**: `dnYara` (NuGet, include `libyara` nativa per x64; per ARM64 compilare `libyara` come progetto C in `src/Tramontana.Yara` con lo stesso approccio di Maestrale) oppure, come ripiego, `yara64.exe` dalla release ufficiale copiata accanto all'app. Regole: YARA-Forge "core" filtrato Windows, regole di base scritte da noi (dropper PowerShell, miner, reverse shell, stealer di browser). Cache per `percorso+dimensione+data`. Ambito limitato ai posti dove il malware vive; limite 50 MB; mai i file solo-cloud di OneDrive.
 - **Defender resta l'antivirus**: YARA e hash sono un secondo parere, con la quarantena come azione.
 
 ## Requisiti di accesso per controllo
@@ -156,7 +156,7 @@ Nuova pagina **Attività**, campionata ogni 2 secondi finché è aperta, più tr
 ## Struttura del codice
 
 ```
-src/WinCleaner.Modules/Protection/
+src/Tramontana.Modules/Protection/
   IProtectionCheck.cs        interfaccia, Finding esteso, categorie, CheckContext, interfacce iniettabili
   ProtectionScanner.cs       orchestrazione (facciata esistente)
   ProtectionBaseline.cs
@@ -188,11 +188,11 @@ src/WinCleaner.Modules/Protection/
     ProcessesCheck.cs
   Quarantine.cs
   RuleStore.cs                 regole YARA, hash, LOLDrivers con SHA-256
-src/WinCleaner.Helper/         nuove operazioni: CollectSystemEvidence, Quarantine, RestoreQuarantined, DeleteQuarantined,
+src/Tramontana.Helper/         nuove operazioni: CollectSystemEvidence, Quarantine, RestoreQuarantined, DeleteQuarantined,
                                TerminateProcess, RemoveDefenderExclusion, EnableDefenderRealtime, RestoreWinlogonDefaults,
                                RemoveIfeoDebugger, ClearAppInitDlls, RemoveWmiSubscription, RemoveComHijack, RemoveExtensionForceList
-src/WinCleaner.App/Pages/      ProtectionPage (gruppi, "nuovo", evidenze, quarantena, rapporto), ActivityPage, QuarantinePage, SettingsPage (regole)
-tests/WinCleaner.Tests/Protection/  una fixture per check: registro finto, output campione di WMI/netsh/bitsadmin, processi finti
+src/Tramontana.App/Pages/      ProtectionPage (gruppi, "nuovo", evidenze, quarantena, rapporto), ActivityPage, QuarantinePage, SettingsPage (regole)
+tests/Tramontana.Tests/Protection/  una fixture per check: registro finto, output campione di WMI/netsh/bitsadmin, processi finti
 ```
 
 ## Cosa resta fuori (per scelta)
@@ -209,7 +209,7 @@ tests/WinCleaner.Tests/Protection/  una fixture per check: registro finto, outpu
 - Test del campionatore sul processo di test e su un `cmd.exe` copiato in `%TEMP%\.x\` con nome `svchost.exe` (deve risultare "nome di sistema fuori da System32, cartella temporanea").
 - Test di `PinnedFileSystem` per la quarantena con junction scambiata, come già fatto per Cestino ed eliminazione; test della DACL ridotta e dello stream `Zone.Identifier`.
 - Prova manuale sul mini PC con un "malware finto": valore Run verso uno script in `%TEMP%`, attività pianificata con `powershell -enc`, sottoscrizione WMI di test, `Debugger` su `sethc.exe`, criterio di estensione forzata, esclusione Defender su `%TEMP%`. Tutti `danger` con il motivo giusto; tutti spariti dopo le azioni; Defender non deve essere disturbato (il malware finto non deve essere eseguibile reale).
-- `wccli protection|posture|processes|signatures` per confrontare più PC senza interfaccia e per il PC del papà via SSH.
+- `trcli protection|posture|processes|signatures` per confrontare più PC senza interfaccia e per il PC del papà via SSH.
 
 ## Stima e ordine
 

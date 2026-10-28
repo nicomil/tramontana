@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Tramontana</AssemblyName>
+    <RootNamespace>Tramontana.App</RootNamespace>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <DefaultLanguage>it-IT</DefaultLanguage>
+    <SatelliteResourceLanguages>it;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppIcon.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tramontana.Modules\Tramontana.Modules.csproj" />
+  </ItemGroup>
+  <!-- dotnet publish of an unpackaged WinUI app leaves out the compiled XAML
+       (.xbf) and the app's resources.pri: without them no window can load. -->
+  <Target Name="PublishXamlArtifacts" AfterTargets="Publish">
+    <ItemGroup>
+      <_TrXaml Include="$(OutDir)**\*.xbf" />
+      <_TrXaml Include="$(OutDir)$(AssemblyName).pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_TrXaml)" DestinationFiles="@(_TrXaml->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

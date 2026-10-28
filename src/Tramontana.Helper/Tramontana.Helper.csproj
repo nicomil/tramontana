@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- No console window: the helper runs hidden. -->
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>trhelper</AssemblyName>
+    <RootNamespace>Tramontana.Helper</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Published as one compressed file: the bootstrap copies and checks exactly one file. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Both targets in the lock file, so publish.ps1 can publish in locked mode without a second restore. -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <!-- DOTNET_STARTUP_HOOKS in the user's environment must not load code into the elevated helper. -->
+    <StartupHookSupport>false</StartupHookSupport>
+    <!-- The SHA-256 of Tramontana.dll this helper serves, set by scripts\publish.ps1 (-p:TrAppSha256=...). -->
+    <TrAppSha256 Condition="'$(TrAppSha256)' == ''"></TrAppSha256>
+    <!-- The SHA-1 thumbprint of the certificate the app is signed with (-p:TrSignerThumbprint=...). -->
+    <TrSignerThumbprint Condition="'$(TrSignerThumbprint)' == ''"></TrSignerThumbprint>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="Tramontana.AppSha256" Value="$(TrAppSha256)" />
+    <AssemblyMetadata Include="Tramontana.SignerThumbprint" Value="$(TrSignerThumbprint)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tramontana.Modules\Tramontana.Modules.csproj" />
+  </ItemGroup>
+</Project>

@@ -3,19 +3,19 @@
 # thumbprint. publish.ps1 finds it by friendly name, so this is needed once per
 # build machine.
 #
-# A self-signed certificate gives WinCleaner what matters for its own security:
+# A self-signed certificate gives Tramontana what matters for its own security:
 # every binary is tamper-evident and the helper only serves an app signed with
-# this very certificate (the thumbprint is compiled into wchelper.exe). What it
+# this very certificate (the thumbprint is compiled into trhelper.exe). What it
 # does not give is SmartScreen reputation: for that, replace it with a
 # certificate from a public CA or Azure Trusted Signing (same friendly name, or
 # pass -SignThumbprint to publish.ps1).
 #   powershell -ExecutionPolicy Bypass -File scripts\new-signing-cert.ps1 [-Subject "CN=..."] [-Years 5]
 param(
-    [string]$Subject = "CN=WinCleaner Code Signing, O=WinCleaner",
+    [string]$Subject = "CN=Tramontana Code Signing, O=Tramontana",
     [int]$Years = 5
 )
 $ErrorActionPreference = "Stop"
-$friendly = "WinCleaner Code Signing"
+$friendly = "Tramontana Code Signing"
 $existing = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.FriendlyName -eq $friendly -and $_.NotAfter -gt (Get-Date) }
 if ($existing) {
     "Certificato già presente: $($existing[0].Thumbprint) (scade il $($existing[0].NotAfter.ToShortDateString()))"

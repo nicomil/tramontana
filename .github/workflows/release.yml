@@ -16,7 +16,7 @@ permissions:
   actions: read
 
 env:
-  OUT: artifacts\WinCleaner-x64
+  OUT: artifacts\Tramontana-x64
 
 jobs:
   release:
@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory artifacts\to-sign | Out-Null
-          foreach ($f in "WinCleaner.exe", "wchelper.exe", "WinCleaner.Core.dll", "WinCleaner.Modules.dll") {
+          foreach ($f in "Tramontana.exe", "trhelper.exe", "Tramontana.Core.dll", "Tramontana.Modules.dll") {
             Copy-Item "$env:OUT\$f" artifacts\to-sign\
           }
 
@@ -91,9 +91,9 @@ jobs:
             if ($sig.SignerCertificate.Thumbprint -ne $expected) { throw "$($f.Name): firmato da $($sig.SignerCertificate.Thumbprint), atteso $expected (aggiorna SIGNPATH_SIGNER_THUMBPRINT)" }
             Copy-Item $f.FullName "$env:OUT\$($f.Name)" -Force
           }
-          $hash = (Get-FileHash "$env:OUT\WinCleaner.dll" -Algorithm SHA256).Hash
-          $identity = (& "$env:OUT\wchelper.exe" --identity | Out-String).Trim()
-          if ($identity -ne "$hash|$expected") { throw "wchelper.exe riporta $identity invece di $hash|$expected" }
+          $hash = (Get-FileHash "$env:OUT\Tramontana.dll" -Algorithm SHA256).Hash
+          $identity = (& "$env:OUT\trhelper.exe" --identity | Out-String).Trim()
+          if ($identity -ne "$hash|$expected") { throw "trhelper.exe riporta $identity invece di $hash|$expected" }
           "Firmati e verificati: $((Get-ChildItem artifacts\signed-files -File).Name -join ', ')"
 
       # ---- installer from the signed files, then 2nd signing request ----
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: setup-unsigned
-          path: artifacts/WinCleaner-Setup-*.exe
+          path: artifacts/Tramontana-Setup-*.exe
 
       - name: Sign the installer (SignPath)
         if: vars.SIGNPATH_ORGANIZATION_ID != ''
@@ -127,7 +127,7 @@ jobs:
         if: vars.SIGNPATH_ORGANIZATION_ID != ''
         shell: pwsh
         run: |
-          $signed = Get-ChildItem artifacts\signed-setup -Filter "WinCleaner-Setup-*.exe" | Select-Object -First 1
+          $signed = Get-ChildItem artifacts\signed-setup -Filter "Tramontana-Setup-*.exe" | Select-Object -First 1
           $sig = Get-AuthenticodeSignature $signed.FullName
           if ($sig.Status -ne "Valid") { throw "setup: firma $($sig.Status)" }
           Copy-Item $signed.FullName "artifacts\$($signed.Name)" -Force
@@ -135,17 +135,17 @@ jobs:
       - name: Checksums and release notes
         shell: pwsh
         run: |
-          $setup = Get-ChildItem artifacts -Filter "WinCleaner-Setup-*.exe" | Select-Object -First 1
+          $setup = Get-ChildItem artifacts -Filter "Tramontana-Setup-*.exe" | Select-Object -First 1
           $sig = Get-AuthenticodeSignature $setup.FullName
           $signed = $sig.Status -eq "Valid"
           "signed=$($signed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           "$((Get-FileHash $setup.FullName -Algorithm SHA256).Hash)  $($setup.Name)" | Set-Content artifacts\SHA256SUMS.txt -Encoding ascii
           $notes = @()
-          $notes += "## WinCleaner ${{ github.ref_name }}"
+          $notes += "## Tramontana ${{ github.ref_name }}"
           $notes += ""
           $notes += if ($signed) { "Installer signed by **$($sig.SignerCertificate.Subject)**." } else { "**Unsigned build**: the installer is not code-signed yet (SmartScreen will warn)." }
           $notes += ""
-          $notes += "Code signing policy: https://github.com/nicomil/wincleaner/blob/main/docs/code-signing-policy.md"
+          $notes += "Code signing policy: https://github.com/nicomil/tramontana/blob/main/docs/code-signing-policy.md"
           $notes += "Free code signing provided by SignPath.io, certificate by SignPath Foundation."
           $notes += ""
           $notes += "SHA-256:"
@@ -158,9 +158,9 @@ jobs:
       - name: Upload the installer as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WinCleaner-Setup
+          name: Tramontana-Setup
           path: |
-            artifacts/WinCleaner-Setup-*.exe
+            artifacts/Tramontana-Setup-*.exe
             artifacts/SHA256SUMS.txt
 
       - name: GitHub Release
@@ -170,5 +170,5 @@ jobs:
           body_path: artifacts/notes.md
           prerelease: ${{ steps.notes.outputs.signed != 'true' }}
           files: |
-            artifacts/WinCleaner-Setup-*.exe
+            artifacts/Tramontana-Setup-*.exe
             artifacts/SHA256SUMS.txt
